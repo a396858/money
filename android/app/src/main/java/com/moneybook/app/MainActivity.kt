@@ -11,14 +11,16 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,11 +29,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -44,7 +44,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -212,19 +211,21 @@ fun AppRoot(dao: RecordDao) {
     val allRecords by dao.observeAll().collectAsState(initial = emptyList())
 
     var viewMonth by remember { mutableStateOf(YearMonth.now()) }
-    var showAdd by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Record?>(null) }
     var exportTarget by remember { mutableStateOf<Int?>(null) }
     var expanded by remember { mutableStateOf(false) }
+
+    // 记一笔（常驻首页顶部，打开即可输入）
+    var entryType by remember { mutableStateOf(RecordType.EXPENSE) }
+    var entryCatId by remember { mutableStateOf(defaultCatId(RecordType.EXPENSE)) }
+    var amountText by remember { mutableStateOf("") }
+    var entryNote by remember { mutableStateOf("") }
+    var entryDate by remember { mutableStateOf(LocalDate.now()) }
 
     // 快捷模板
     var templates by remember { mutableStateOf(TemplateStore.load(context)) }
     var showTemplates by remember { mutableStateOf(false) }
     var editingTplIndex by remember { mutableStateOf(-1) }
-
-    // 快捷栏带入的分类与收支类型
-    var pendingCat by remember { mutableStateOf<String?>(null) }
-    var pendingType by remember { mutableStateOf(RecordType.EXPENSE) }
 
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
@@ -271,26 +272,57 @@ fun AppRoot(dao: RecordDao) {
     val visibleRecords = if (expanded || inMonth.size <= PAGE_SIZE) inMonth else inMonth.take(PAGE_SIZE)
     val hiddenCount = inMonth.size - visibleRecords.size
 
-    Scaffold(
-        containerColor = PageBg,
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAdd = true },
-                containerColor = BrandBlue,
-                contentColor = Color.White,
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("记一笔", fontWeight = FontWeight.SemiBold)
-            }
-        }
-    ) { padding ->
+    Scaffold(containerColor = PageBg) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
         ) {
+            // 记一笔（常驻首页顶部，打开即可输入金额）
+            EntryCard(
+                type = entryType,
+                catId = entryCatId,
+                amountText = amountText,
+                note = entryNote,
+                date = entryDate,
+                onTypeChange = { t ->
+                    if (entryType != t) {
+                        entryType = t
+                        entryCatId = defaultCatId(t)
+                    }
+                },
+                onKey = { k -> amountText = applyKey(amountText, k) },
+                onNoteChange = { if (it.length <= 40) entryNote = it },
+                onDateChange = { entryDate = it },
+                onSave = {
+                    val amt = amountText.toDoubleOrNull()
+                    if (amt == null || amt <= 0) {
+                        toast("请输入金额")
+                    } else {
+                        val cat = findCat(entryType, entryCatId)
+                        scope.launch {
+                            dao.insert(
+                                Record(
+                                    type = entryType,
+                                    categoryId = entryCatId,
+                                    amount = Math.round(amt * 100) / 100.0,
+                                    note = entryNote.trim(),
+                                    date = entryDate.toString(),
+                                    createdAt = System.currentTimeMillis()
+                                )
+                            )
+                            viewMonth = YearMonth.from(entryDate)
+                            expanded = false
+                            // 保留分类与日期，清空金额和备注，方便接着记下一笔
+                            amountText = ""
+                            entryNote = ""
+                            toast("已记下 ${cat.emoji} ${cat.name} ¥${fmtMoney(amt)}")
+                        }
+                    }
+                }
+            )
+
             MonthSwitcher(
                 month = viewMonth,
                 onPrev = { viewMonth = viewMonth.minusMonths(1); expanded = false },
@@ -307,13 +339,25 @@ fun AppRoot(dao: RecordDao) {
 
             SummaryCard(totalExpense, totalIncome)
 
-            // 支出分类快捷栏（结余下方）：点分类 → 直接进入已选好分类的记一笔
+            Text(
+                text = "选择分类",
+                fontSize = 13.sp,
+                color = InkGray,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp)
+            )
+
+            // 分类网格：点一下选中该分类，金额键盘输入的账就归到它
             QuickBar(
+                currentCatId = entryCatId,
                 onQuick = { showTemplates = true },
-                onCategory = { catId, type ->
-                    pendingCat = catId
-                    pendingType = type
-                    showAdd = true
+                onCategory = { catId, kind ->
+                    entryCatId = catId
+                    when (kind) {
+                        CatKind.EXPENSE -> entryType = RecordType.EXPENSE
+                        CatKind.INCOME -> entryType = RecordType.INCOME
+                        CatKind.BOTH -> Unit    // 通用分类保持当前收支
+                    }
                 }
             )
 
@@ -334,25 +378,9 @@ fun AppRoot(dao: RecordDao) {
                     onItemLongClick = { pendingDelete = it }
                 )
             }
-        }
-    }
 
-    // 记一笔弹层（pendingCat 用于快捷栏带入分类：锁定分类，只填金额）
-    if (showAdd) {
-        AddRecordSheet(
-            dao = dao,
-            initialType = pendingType,
-            initialCat = pendingCat ?: defaultCatId(pendingType),
-            lockedCat = pendingCat != null,
-            onDismiss = { showAdd = false; pendingCat = null },
-            onSaved = { date, amount ->
-                showAdd = false
-                pendingCat = null
-                viewMonth = YearMonth.from(date)
-                expanded = false
-                toast("已记下 ¥${fmtMoney(amount)}")
-            }
-        )
+            Spacer(Modifier.height(28.dp))
+        }
     }
 
     // 快捷模板弹层
@@ -510,29 +538,39 @@ fun SummaryCard(expense: Double, income: Double) {
     }
 }
 
-// ---------- 快捷分类栏（收入结余下方，网格：一行 5 个） ----------
+// ---------- 分类网格（一行 5 个，点一下选中该分类） ----------
 
 private data class QuickCell(
     val emoji: String,
     val label: String,
     val income: Boolean,
     val highlight: Boolean,
+    val selected: Boolean,
     val action: () -> Unit
 )
 
 @Composable
-fun QuickBar(onQuick: () -> Unit, onCategory: (String, RecordType) -> Unit) {
-    // 每个分类一个按钮：点一下直接打开记一笔，分类已选好；末尾是「快捷」模板按钮
+fun QuickBar(
+    currentCatId: String,
+    onQuick: () -> Unit,
+    onCategory: (String, CatKind) -> Unit
+) {
+    // 每个分类一个按钮：点一下选中，金额键盘输入的账就归到它；末尾是「快捷」模板按钮
     val cells = CATS.map { c ->
-        val t = if (c.kind == CatKind.INCOME) RecordType.INCOME else RecordType.EXPENSE
-        QuickCell(c.emoji, c.name, c.kind == CatKind.INCOME, false) { onCategory(c.id, t) }
-    } + QuickCell("⚡", "快捷", false, true, onQuick)
+        QuickCell(
+            emoji = c.emoji,
+            label = c.name,
+            income = c.kind == CatKind.INCOME,
+            highlight = false,
+            selected = c.id == currentCatId
+        ) { onCategory(c.id, c.kind) }
+    } + QuickCell("⚡", "快捷", false, true, false, onQuick)
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp)
+            .padding(top = 10.dp)
             .padding(horizontal = 16.dp)
     ) {
         cells.chunked(5).forEach { row ->
@@ -545,6 +583,7 @@ fun QuickBar(onQuick: () -> Unit, onCategory: (String, RecordType) -> Unit) {
                         emoji = cell.emoji,
                         label = cell.label,
                         highlight = cell.highlight,
+                        selected = cell.selected,
                         income = cell.income,
                         onClick = cell.action,
                         modifier = Modifier.weight(1f)
@@ -564,6 +603,7 @@ fun QuickPill(
     label: String,
     highlight: Boolean,
     income: Boolean = false,
+    selected: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -572,10 +612,15 @@ fun QuickPill(
             .background(
                 when {
                     highlight -> BrandBlue
+                    selected -> Color(0xFFEEF4FF)
                     income -> Color(0xFFEEFAF7)
                     else -> Color.White
                 },
                 RoundedCornerShape(13.dp)
+            )
+            .then(
+                if (selected) Modifier.border(1.5.dp, BrandBlue, RoundedCornerShape(13.dp))
+                else Modifier
             )
             .combinedClickable(onClick = onClick)
             .padding(vertical = 9.dp),
@@ -587,8 +632,13 @@ fun QuickPill(
             label,
             fontSize = 11.sp,
             maxLines = 1,
-            color = if (highlight) Color.White else if (income) IncomeGreen else InkGray,
-            fontWeight = if (highlight || income) FontWeight.SemiBold else FontWeight.Normal
+            color = when {
+                highlight -> Color.White
+                selected -> BrandBlue
+                income -> IncomeGreen
+                else -> InkGray
+            },
+            fontWeight = if (highlight || income || selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }
@@ -863,9 +913,11 @@ fun RecordList(
 ) {
     val grouped = records.groupBy { it.date }.toSortedMap(compareByDescending { it })
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
+    // 外层页面已可滚动，这里用普通 Column，避免嵌套滚动冲突
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         grouped.forEach { (date, items) ->
@@ -873,60 +925,54 @@ fun RecordList(
             val dayIncome = items.filter { it.type == RecordType.INCOME }.sumOf { it.amount }
             val d = LocalDate.parse(date)
 
-            item(key = "head_$date") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        "${d.monthValue}月${d.dayOfMonth}日 ${weekdayCn(d)}",
-                        fontSize = 12.5.sp,
-                        color = InkGray,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        buildString {
-                            if (dayExpense > 0) append("支出 ¥${fmtMoney(dayExpense)}")
-                            if (dayExpense > 0 && dayIncome > 0) append("  ·  ")
-                            if (dayIncome > 0) append("收入 ¥${fmtMoney(dayIncome)}")
-                        },
-                        fontSize = 12.sp,
-                        color = InkGray
-                    )
-                }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "${d.monthValue}月${d.dayOfMonth}日 ${weekdayCn(d)}",
+                    fontSize = 12.5.sp,
+                    color = InkGray,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    buildString {
+                        if (dayExpense > 0) append("支出 ¥${fmtMoney(dayExpense)}")
+                        if (dayExpense > 0 && dayIncome > 0) append("  ·  ")
+                        if (dayIncome > 0) append("收入 ¥${fmtMoney(dayIncome)}")
+                    },
+                    fontSize = 12.sp,
+                    color = InkGray
+                )
             }
 
-            item(key = "group_$date") {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column {
-                        items.forEachIndexed { index, r ->
-                            RecordRow(
-                                record = r,
-                                showDivider = index > 0,
-                                onLongClick = { onItemLongClick(r) }
-                            )
-                        }
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column {
+                    items.forEachIndexed { index, r ->
+                        RecordRow(
+                            record = r,
+                            showDivider = index > 0,
+                            onLongClick = { onItemLongClick(r) }
+                        )
                     }
                 }
             }
         }
 
         if (hiddenCount > 0) {
-            item(key = "more_btn") {
-                TextButton(
-                    onClick = onMore,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = BrandBlue)
-                    Spacer(Modifier.width(4.dp))
-                    Text("展开其余 $hiddenCount 条", color = BrandBlue, fontWeight = FontWeight.SemiBold)
-                }
+            TextButton(
+                onClick = onMore,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = BrandBlue)
+                Spacer(Modifier.width(4.dp))
+                Text("展开其余 $hiddenCount 条", color = BrandBlue, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -1006,79 +1052,71 @@ fun EmptyHint(hasAny: Boolean) {
     }
 }
 
-// ---------- 记一笔弹层 ----------
+// ---------- 记一笔（常驻首页顶部） ----------
+
+/** 数字键盘按键处理（与网页版规则一致：最多 9 位整数 + 2 位小数） */
+fun applyKey(current: String, k: String): String {
+    var s = current
+    when (k) {
+        "del" -> if (s.isNotEmpty()) s = s.dropLast(1)
+        "." -> if (!s.contains('.')) s = (if (s.isEmpty()) "0" else s) + "."
+        "00" -> if (s.isNotEmpty() && s != "0") {
+            s += "00"
+            if (s.contains('.')) {
+                val i = s.substringBefore('.')
+                val d = s.substringAfter('.').take(2)
+                s = "$i.$d"
+            }
+        }
+        else -> {
+            val dec = if (s.contains('.')) s.substringAfter('.') else ""
+            if ((!s.contains('.') || dec.length < 2) && s.replace(".", "").length < 9) {
+                s = if (s == "0") k else s + k
+            }
+        }
+    }
+    return s
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun AddRecordSheet(
-    dao: RecordDao,
-    initialType: RecordType,
-    initialCat: String,
-    lockedCat: Boolean = false,
-    onDismiss: () -> Unit,
-    onSaved: (LocalDate, Double) -> Unit
+fun EntryCard(
+    type: RecordType,
+    catId: String,
+    amountText: String,
+    note: String,
+    date: LocalDate,
+    onTypeChange: (RecordType) -> Unit,
+    onKey: (String) -> Unit,
+    onNoteChange: (String) -> Unit,
+    onDateChange: (LocalDate) -> Unit,
+    onSave: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    var type by remember { mutableStateOf(initialType) }
-    var catId by remember { mutableStateOf(initialCat) }
-    var locked by remember { mutableStateOf(lockedCat) }
-    var amountText by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf(LocalDate.now()) }
+    val cat = findCat(type, catId)
+    val amount = amountText.toDoubleOrNull()
+    val hasAmount = amount != null && amount > 0
     var showDatePicker by remember { mutableStateOf(false) }
 
-    val amount = amountText.toDoubleOrNull()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Color.White,
-        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 1.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Column(Modifier.padding(horizontal = 18.dp)) {
-
-            if (locked) {
-                // 从分类按钮进入：分类已锁定，只填金额
-                val lockC = findCat(type, catId)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp)
-                        .background(BrandBlue.copy(alpha = 0.07f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text(lockC.emoji, fontSize = 18.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        (if (type == RecordType.INCOME) "收入 · " else "") + lockC.name + "（只填金额即可）",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = BrandBlue,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = { locked = false }) {
-                        Text("更换", fontSize = 12.sp, color = InkGray)
-                    }
-                }
-            } else {
-            // 收 / 支 切换
+        Column {
+            // 收 / 支 + 当前分类
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(start = 14.dp, end = 14.dp, top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 FilterChip(
                     selected = type == RecordType.EXPENSE,
-                    onClick = {
-                        if (type != RecordType.EXPENSE) {
-                            type = RecordType.EXPENSE
-                            catId = defaultCatId(RecordType.EXPENSE)
-                        }
-                    },
+                    onClick = { onTypeChange(RecordType.EXPENSE) },
                     label = {
                         Text(
                             "支出",
@@ -1089,12 +1127,7 @@ fun AddRecordSheet(
                 )
                 FilterChip(
                     selected = type == RecordType.INCOME,
-                    onClick = {
-                        if (type != RecordType.INCOME) {
-                            type = RecordType.INCOME
-                            catId = defaultCatId(RecordType.INCOME)
-                        }
-                    },
+                    onClick = { onTypeChange(RecordType.INCOME) },
                     label = {
                         Text(
                             "收入",
@@ -1103,102 +1136,88 @@ fun AddRecordSheet(
                         )
                     }
                 )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "记入 ${cat.emoji} ${cat.name}",
+                    fontSize = 12.sp,
+                    color = BrandBlue,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
             }
 
-            Spacer(Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = amountText,
-                onValueChange = { s ->
-                    val cleaned = s.filter { it.isDigit() || it == '.' }
-                    val parts = cleaned.split('.')
-                    val fixed = when {
-                        parts.size > 2 -> parts[0] + "." + parts.drop(1).joinToString("").take(2)
-                        parts.size == 2 && parts[1].length > 2 -> parts[0] + "." + parts[1].take(2)
-                        else -> cleaned
-                    }
-                    if (fixed.replace(".", "").length <= 9) amountText = fixed
-                },
-                label = { Text("金额") },
-                prefix = { Text("¥", fontWeight = FontWeight.SemiBold) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            // 分类
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // 金额
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                catsOf(type).forEach { cat ->
-                    FilterChip(
-                        selected = cat.id == catId,
-                        onClick = { catId = cat.id },
-                        label = { Text("${cat.emoji} ${cat.name}") },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = BrandBlue.copy(alpha = 0.12f),
-                            selectedLabelColor = BrandBlue
-                        )
-                    )
-                }
+                Text("¥", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = InkGray)
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = if (hasAmount) fmtMoney(amount!!) else "0.00",
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = when {
+                        !hasAmount -> Color(0xFFC8CED6)
+                        type == RecordType.INCOME -> IncomeGreen
+                        else -> ExpenseRed
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
             }
-            } // end else（未锁定时才显示收/支切换与分类选择）
 
-            Spacer(Modifier.height(10.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // 备注 + 日期
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 OutlinedTextField(
                     value = note,
-                    onValueChange = { if (it.length <= 40) note = it },
-                    label = { Text("备注（可空）") },
+                    onValueChange = onNoteChange,
+                    placeholder = { Text("备注（可空）", fontSize = 13.sp, color = Color(0xFFAAB2BC)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f)
                 )
-                Spacer(Modifier.width(10.dp))
-                TextButton(onClick = { showDatePicker = true }) {
-                    Text("${date.monthValue}月${date.dayOfMonth}日", color = BrandBlue)
+                Surface(
+                    color = Color(0xFFF4F6F8),
+                    shape = RoundedCornerShape(11.dp),
+                    modifier = Modifier.clickable { showDatePicker = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("📅", fontSize = 13.sp)
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = if (date == LocalDate.now()) "今天"
+                                   else date.monthValue.toString() + "月" + date.dayOfMonth + "日",
+                            fontSize = 13.sp,
+                            color = InkGray,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
 
-            Button(
-                onClick = {
-                    val amt = amountText.toDoubleOrNull() ?: return@Button
-                    if (amt <= 0) return@Button
-                    scope.launch {
-                        dao.insert(
-                            Record(
-                                type = type,
-                                categoryId = catId,
-                                amount = Math.round(amt * 100) / 100.0,
-                                note = note.trim(),
-                                date = date.toString(),
-                                createdAt = System.currentTimeMillis()
-                            )
-                        )
-                        onSaved(date, amt)
-                    }
-                },
-                enabled = amount != null && amount > 0,
-                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text("保存", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            }
+            // 自带数字键盘（不弹系统输入法）
+            Keypad(onKey = onKey, onSave = onSave, saveEnabled = hasAmount)
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(4.dp))
         }
     }
 
     if (showDatePicker) {
-        val state = rememberDatePickerState(
+        val dpState = rememberDatePickerState(
             initialSelectedDateMillis = date
                 .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
         )
@@ -1206,8 +1225,10 @@ fun AddRecordSheet(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    state.selectedDateMillis?.let {
-                        date = Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate()
+                    dpState.selectedDateMillis?.let {
+                        onDateChange(
+                            Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate()
+                        )
                     }
                     showDatePicker = false
                 }) { Text("确定") }
@@ -1216,8 +1237,96 @@ fun AddRecordSheet(
                 TextButton(onClick = { showDatePicker = false }) { Text("取消") }
             }
         ) {
-            DatePicker(state = state)
+            DatePicker(state = dpState)
         }
+    }
+}
+
+/** 内置数字键盘：左侧 0-9 / . / 00，右上角退格，右侧长条保存 */
+@Composable
+fun Keypad(onKey: (String) -> Unit, onSave: () -> Unit, saveEnabled: Boolean) {
+    val keyH = 52.dp
+    val gap = 1.dp
+    val digitRows = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("0", "00", ".")
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFE4E8EE))
+    ) {
+        Column(modifier = Modifier.weight(3f)) {
+            digitRows.forEachIndexed { index, r ->
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    r.forEach { k ->
+                        Keybox(
+                            label = k,
+                            modifier = Modifier.weight(1f).height(keyH),
+                            onClick = { onKey(k) }
+                        )
+                    }
+                }
+                // 行间隙（最后一行后不加，保证与右侧保存键总高一致）
+                if (index < digitRows.size - 1) Spacer(Modifier.height(gap))
+            }
+        }
+        Spacer(Modifier.width(gap))
+        Column(modifier = Modifier.weight(1f)) {
+            Keybox(
+                label = "⌫",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(keyH),
+                onClick = { onKey("del") }
+            )
+            Spacer(Modifier.height(gap))
+            Keybox(
+                label = "保存",
+                enabled = saveEnabled,
+                isSave = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(keyH * 3 + gap * 2),
+                onClick = onSave
+            )
+        }
+    }
+}
+
+@Composable
+private fun Keybox(
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isSave: Boolean = false,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .background(
+                when {
+                    isSave && enabled -> BrandBlue
+                    isSave -> Color(0xFFC3CBD6)
+                    else -> Color(0xFFFBFCFD)
+                }
+            )
+            .clickable(enabled = !isSave || enabled) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            fontSize = if (isSave) 16.sp else 20.sp,
+            fontWeight = if (isSave) FontWeight.SemiBold else FontWeight.Medium,
+            color = when {
+                isSave -> Color.White
+                label == "⌫" -> InkGray
+                else -> Color(0xFF1B1F24)
+            }
+        )
     }
 }
 
