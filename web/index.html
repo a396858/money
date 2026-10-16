@@ -39,105 +39,136 @@
   input{font-family:inherit;}
 
   .app{
-    min-height:100%;
-    padding-bottom:calc(96px + var(--safe-b));
-    max-width:520px;
-    margin:0 auto;
+    height:100vh;height:100dvh;
+    display:flex;flex-direction:column;
+    max-width:520px;margin:0 auto;
+    padding:calc(6px + var(--safe-t)) 12px calc(8px + var(--safe-b));
+    overflow:hidden;
   }
+  html,body{overflow:hidden;height:100%;}
 
-  /* ============ 顶栏 ============ */
-  .topbar{
-    display:flex;align-items:center;justify-content:center;gap:6px;
-    padding:calc(14px + var(--safe-t)) 16px 10px;
-    position:sticky;top:0;z-index:20;
-    background:linear-gradient(180deg,var(--bg) 72%,rgba(244,246,248,0));
+  /* ============ 顶部：两行小字（日期 / 本月收支） ============ */
+  .head{flex-shrink:0;padding:0 2px 8px;}
+  .head .hl{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:26px;}
+  .date-pill{
+    position:relative;overflow:hidden;
+    display:inline-flex;align-items:center;gap:4px;
+    font-size:13px;font-weight:600;color:var(--text);
+    border-radius:8px;padding:3px 7px 3px 5px;
   }
-  .month-nav{
-    display:flex;align-items:center;gap:2px;
-    background:var(--card);border-radius:999px;padding:4px;
+  .date-pill:active{background:#e9edf3;}
+  .date-pill .arw{font-size:9px;color:var(--text-3);transform:translateY(-1px);}
+  .date-pill input{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;background:none;}
+  .head .acts{display:flex;gap:6px;flex-shrink:0;}
+  .mini-btn{
+    font-size:12px;color:var(--text-2);background:var(--card);
+    border-radius:9px;padding:4px 10px;line-height:1.3;
     box-shadow:0 1px 2px rgba(16,24,40,.05),0 0 0 1px rgba(16,24,40,.03);
   }
-  .month-nav button{
-    width:34px;height:34px;border-radius:999px;
-    display:grid;place-items:center;font-size:19px;color:var(--text-2);
-    line-height:1;padding-bottom:2px;
+  .mini-btn:active{background:#f0f2f5;}
+  .head .sub{
+    display:flex;align-items:center;gap:16px;padding-left:5px;margin-top:2px;
+    font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums;
   }
-  .month-nav button:active{background:#f0f2f5;}
-  .month-nav .label{
-    min-width:104px;text-align:center;font-weight:600;font-size:15px;letter-spacing:.2px;
-  }
-  .topbar .right{
-    position:absolute;right:16px;top:calc(14px + var(--safe-t));
-    height:42px;display:flex;align-items:center;
-  }
-  .icon-btn{
-    width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
-    color:var(--text-2);background:var(--card);
-    box-shadow:0 1px 2px rgba(16,24,40,.05),0 0 0 1px rgba(16,24,40,.03);
-  }
-  .icon-btn:active{background:#f0f2f5;}
+  .head .sub b{font-weight:600;margin-left:3px;}
+  .head .sub .e b{color:var(--expense);}
+  .head .sub .i b{color:var(--income);}
 
-  /* ============ 汇总卡 ============ */
-  .summary{
-    margin:6px 16px 0;
-    background:var(--card);
-    border-radius:var(--radius);
-    padding:20px;
-    box-shadow:0 1px 2px rgba(16,24,40,.04),0 0 0 1px rgba(16,24,40,.03);
-  }
-  .summary .cap{font-size:13px;color:var(--text-3);letter-spacing:.3px;}
-  .summary .big{
-    font-size:34px;font-weight:700;letter-spacing:-.8px;margin:6px 0 16px;
-    font-variant-numeric:tabular-nums;
-    color:var(--expense);
-  }
-  .split{
-    display:flex;gap:0;border-top:1px solid var(--line);padding-top:14px;
-  }
-  .split > div{flex:1;}
-  .split > div + div{border-left:1px solid var(--line);padding-left:16px;}
-  .split .k{font-size:12px;color:var(--text-3);margin-bottom:3px;}
-  .split .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;}
-  .v.income{color:var(--income);}
-  .v.expense{color:var(--expense);}
-  .v.neutral{color:var(--text);}
-
-  /* ============ 快捷分类栏（网格：一行 5 个） ============ */
-  .quickbar{
-    display:grid;
-    grid-template-columns:repeat(5,1fr);
-    gap:8px;
-    margin:8px 16px 0;
-    padding:2px;
+  /* ============ 中间：分类网格（纯文字，一行 5 个，撑满剩余空间） ============ */
+  .catgrid-wrap{flex:1;min-height:0;display:flex;align-items:center;}
+  .catgrid{
+    width:100%;
+    display:grid;grid-template-columns:repeat(5,1fr);
+    grid-auto-rows:minmax(34px,8.2vh);
+    gap:6px;
   }
   .qbtn{
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-    width:100%;padding:9px 0 7px;
-    background:var(--card);border-radius:13px;
+    display:flex;align-items:center;justify-content:center;
+    width:100%;min-height:0;padding:2px;
+    background:var(--card);border-radius:11px;
+    font-size:13px;color:var(--text-2);white-space:nowrap;
     box-shadow:0 1px 2px rgba(16,24,40,.04),0 0 0 1px rgba(16,24,40,.03);
     transition:transform .12s ease;
   }
-  .qbtn:active{transform:scale(.93);}
-  .qbtn .qe{font-size:20px;line-height:1;}
-  .qbtn .qn{font-size:11px;color:var(--text-2);white-space:nowrap;}
+  .qbtn:active{transform:scale(.95);}
   .qbtn.qmain{
-    background:linear-gradient(145deg,#4a83ff,var(--brand));
-    box-shadow:0 4px 12px rgba(47,111,235,.3);
+    background:linear-gradient(145deg,#4a83ff,var(--brand));color:#fff;font-weight:600;
+    box-shadow:0 3px 10px rgba(47,111,235,.28);
   }
-  .qbtn.qmain .qe{font-size:19px;}
-  .qbtn.qmain .qn{color:#fff;font-weight:600;}
-  /* 收入类分类按钮 */
   .qbtn.qinc{
-    background:linear-gradient(150deg,#fff,#eefaf7);
+    background:linear-gradient(150deg,#fff,#eefaf7);color:var(--income);font-weight:600;
     box-shadow:0 1px 2px rgba(16,24,40,.04),0 0 0 1px rgba(18,165,148,.2);
   }
-  .qbtn.qinc .qn{color:var(--income);font-weight:600;}
-  /* 当前选中的分类 */
   .qbtn.on{
-    background:#eef4ff;
-    box-shadow:0 0 0 1.5px var(--brand) inset, 0 2px 6px rgba(47,111,235,.12);
+    background:#eef4ff;color:var(--brand);font-weight:600;
+    box-shadow:0 0 0 1.5px var(--brand) inset,0 2px 6px rgba(47,111,235,.12);
   }
-  .qbtn.on .qn{color:var(--brand);font-weight:600;}
+
+  /* ============ 底部：输入区（压缩高度） ============ */
+  .pad{
+    flex-shrink:0;margin-top:8px;background:var(--card);
+    border-radius:16px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(16,24,40,.05),0 0 0 1px rgba(16,24,40,.04);
+  }
+  .pad .ctrl{display:flex;align-items:center;gap:8px;padding:8px 10px 0;}
+  .seg{display:flex;gap:2px;background:#f1f3f6;border-radius:9px;padding:2px;flex-shrink:0;}
+  .seg button{padding:5px 11px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--text-2);transition:.16s;}
+  .seg button.on{background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.1);}
+  .seg button.on[data-t="expense"]{color:var(--expense);}
+  .seg button.on[data-t="income"]{color:var(--income);}
+  .pad .note{
+    flex:1;min-width:0;background:#f4f6f8;border-radius:9px;
+    padding:7px 10px;font-size:13px;color:var(--text);
+    border:1.5px solid transparent;outline:none;
+  }
+  .pad .note:focus{background:#fff;border-color:#c7dbff;}
+  .pad .note::placeholder{color:#aab2bc;}
+  .amt-row{display:flex;align-items:baseline;gap:4px;padding:5px 12px 6px;}
+  .amt-row .cur{font-size:18px;font-weight:600;color:var(--text-2);flex-shrink:0;}
+  .amt-row .val{
+    flex:1;min-width:0;
+    font-size:30px;font-weight:700;letter-spacing:-.8px;line-height:1.15;
+    font-variant-numeric:tabular-nums;overflow:hidden;white-space:nowrap;
+  }
+  .amt-row .val.placeholder{color:#c8ced6;font-size:26px;letter-spacing:0;}
+  .amt-row .val.expense{color:var(--expense);}
+  .amt-row .val.income{color:var(--income);}
+  .amt-row .catnow{
+    flex-shrink:0;font-size:12px;font-weight:600;color:var(--brand);
+    background:#eef4ff;border-radius:8px;padding:3px 8px;
+  }
+  .keys{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+    background:var(--line);border-top:1px solid var(--line);
+  }
+  .keys button{
+    background:#fbfcfd;padding:9px 0;font-size:19px;font-weight:500;
+    color:var(--text);font-variant-numeric:tabular-nums;
+  }
+  .keys button:active{background:#eef1f5;}
+  .keys .del{font-size:17px;color:var(--text-2);}
+  .keys .save{
+    grid-row:span 3;background:var(--brand);color:#fff;
+    font-size:15px;font-weight:600;display:grid;place-items:center;
+  }
+  .keys .save:active{background:#2560d4;}
+  .keys .save:disabled{background:#c3cbd6;}
+
+  /* 流水弹层内的月份导航 */
+  .month-nav{
+    display:flex;align-items:center;justify-content:center;gap:2px;
+    background:#f4f6f8;border-radius:999px;padding:3px;
+    margin:10px auto 4px;flex-shrink:0;
+  }
+  .month-nav button{
+    width:32px;height:32px;border-radius:999px;
+    display:grid;place-items:center;font-size:18px;color:var(--text-2);
+    line-height:1;padding-bottom:2px;
+  }
+  .month-nav button:active{background:#e8ebef;}
+  .month-nav .label{min-width:100px;text-align:center;font-weight:600;font-size:14px;}
+  #listSheet .list-head{margin:8px 18px 8px;}
+  #listSheet .groups{overflow-y:auto;flex:1;min-height:0;padding-bottom:calc(18px + var(--safe-b));}
 
   /* ============ 列表 ============ */
   .list-head{
@@ -201,36 +232,6 @@
   .empty .e{font-size:40px;margin-bottom:12px;opacity:.55;}
   .empty .m{font-size:14px;line-height:1.7;}
 
-  /* ============ 记一笔（常驻卡片） ============ */
-  .entry{
-    background:var(--card);
-    border-radius:18px;
-    margin:10px 16px 0;
-    overflow:hidden;
-    box-shadow:0 1px 2px rgba(16,24,40,.05),0 0 0 1px rgba(16,24,40,.04);
-  }
-  .entry .seg{margin:12px 14px 0;}
-  .entry .amount-box{border-bottom:none;padding:12px 16px 6px;}
-  .entry .amount-box .cap{
-    display:flex;align-items:center;justify-content:space-between;
-    font-size:12px;color:var(--text-3);margin-bottom:4px;
-  }
-  .cat-hint{
-    font-size:12px;color:var(--text-2);background:#f1f4f8;
-    border-radius:9px;padding:5px 9px;display:flex;align-items:center;gap:3px;
-  }
-  .cat-hint b{color:var(--brand);font-weight:600;}
-  .cat-hint:active{background:#e7ecf4;}
-  .entry .amount-line .val{font-size:34px;}
-  .entry .meta{padding:8px 14px 12px;}
-
-  /* 分类区标题 */
-  .cat-head{
-    display:flex;align-items:center;justify-content:space-between;
-    margin:18px 18px 0;font-size:13px;color:var(--text-2);font-weight:600;
-  }
-  .cat-head .hint{font-size:12px;color:var(--text-3);font-weight:400;}
-
   /* ============ 底部弹层 ============ */
   .mask{
     position:fixed;inset:0;background:rgba(16,24,40,.42);
@@ -253,91 +254,6 @@
     width:38px;height:4px;border-radius:2px;background:#dfe3e8;
     margin:9px auto 0;flex-shrink:0;
   }
-
-  /* 类型切换 */
-  .seg{
-    display:flex;gap:4px;background:#f1f3f6;border-radius:12px;
-    padding:4px;margin:14px 18px 0;flex-shrink:0;
-  }
-  .seg button{
-    flex:1;padding:9px 0;border-radius:9px;font-size:14px;font-weight:600;
-    color:var(--text-2);transition:.16s;
-  }
-  .seg button.on{background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.1);}
-  .seg button.on[data-t="expense"]{color:var(--expense);}
-  .seg button.on[data-t="income"]{color:var(--income);}
-
-  /* 金额 */
-  .amount-box{
-    padding:16px 18px 12px;border-bottom:1px solid var(--line);flex-shrink:0;
-  }
-  .amount-box .cap{font-size:12px;color:var(--text-3);margin-bottom:6px;}
-  .amount-line{display:flex;align-items:baseline;gap:4px;}
-  .amount-line .cur{font-size:22px;font-weight:600;color:var(--text-2);}
-  .amount-line .val{
-    font-size:38px;font-weight:700;letter-spacing:-1px;
-    font-variant-numeric:tabular-nums;line-height:1.1;
-    flex:1;min-width:0;overflow:hidden;white-space:nowrap;
-  }
-  .amount-line .val.placeholder{color:#c8ced6;letter-spacing:0;font-size:32px;}
-  .amount-line .val.expense{color:var(--expense);}
-  .amount-line .val.income{color:var(--income);}
-
-  /* 分类 */
-  .cats{
-    display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
-    padding:14px 14px 4px;overflow-y:auto;flex-shrink:0;
-  }
-  .cat{
-    border-radius:13px;padding:10px 2px 8px;
-    display:flex;flex-direction:column;align-items:center;gap:5px;
-    transition:.14s;border:1.5px solid transparent;
-  }
-  .cat .ci{font-size:21px;line-height:1;}
-  .cat .cn{font-size:11.5px;color:var(--text-2);}
-  .cat:active{background:#f4f6f8;}
-  .cat.on{background:#eef4ff;border-color:#c7dbff;}
-  .cat.on .cn{color:var(--brand);font-weight:600;}
-
-  /* 备注 + 日期 */
-  .meta{
-    display:flex;gap:8px;padding:12px 18px;flex-shrink:0;
-  }
-  .meta .note{
-    flex:1;background:#f4f6f8;border-radius:11px;
-    padding:11px 13px;font-size:14px;border:1.5px solid transparent;
-    outline:none;min-width:0;color:var(--text);
-  }
-  .meta .note:focus{background:#fff;border-color:#c7dbff;}
-  .meta .note::placeholder{color:#aab2bc;}
-  .meta .date{
-    background:#f4f6f8;border-radius:11px;padding:11px 12px;font-size:13.5px;
-    color:var(--text-2);position:relative;overflow:hidden;flex-shrink:0;
-    display:flex;align-items:center;gap:5px;
-  }
-  .meta .date input{
-    position:absolute;inset:0;opacity:0;width:100%;height:100%;
-    border:none;background:none;
-  }
-
-  /* 键盘 */
-  .keys{
-    display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
-    background:var(--line);border-top:1px solid var(--line);
-    flex-shrink:0;
-  }
-  .keys button{
-    background:#fbfcfd;padding:15px 0;font-size:21px;font-weight:500;
-    color:var(--text);font-variant-numeric:tabular-nums;
-  }
-  .keys button:active{background:#eef1f5;}
-  .keys .save{
-    grid-row:span 2;background:var(--brand);color:#fff;
-    font-size:16px;font-weight:600;display:grid;place-items:center;
-  }
-  .keys .save:active{background:#2560d4;}
-  .keys .save:disabled{background:#c3cbd6;}
-  .keys .del{font-size:19px;color:var(--text-2);}
 
   /* 菜单弹层 */
   .menu-list{padding:10px 14px calc(20px + var(--safe-b));}
@@ -451,50 +367,42 @@
 <body>
 
 <div class="app">
-  <div class="topbar">
-    <div class="month-nav">
-      <button id="prevM" aria-label="上个月">‹</button>
-      <div class="label" id="monthLabel">—</div>
-      <button id="nextM" aria-label="下个月">›</button>
+  <!-- 顶部两行小字：日期 + 本月收支 -->
+  <div class="head">
+    <div class="hl">
+      <label class="date-pill">
+        <span id="dateLabel">今天</span><span class="arw">▾</span>
+        <input type="date" id="dateInput">
+      </label>
+      <div class="acts">
+        <button class="mini-btn" id="listBtn">流水</button>
+        <button class="mini-btn" id="menuBtn">⋯</button>
+      </div>
     </div>
-    <div class="right">
-      <button class="icon-btn" id="menuBtn" aria-label="更多">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none"/>
-          <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-          <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none"/>
-        </svg>
-      </button>
+    <div class="sub">
+      <span class="e"><span id="hExpL">本月支出</span><b id="hExp">¥0.00</b></span>
+      <span class="i"><span id="hIncL">本月收入</span><b id="hInc">¥0.00</b></span>
     </div>
   </div>
 
-  <!-- 记一笔（常驻，打开即是） -->
-  <section class="entry" id="entryCard">
-    <div class="seg" id="typeSeg">
-      <button data-t="expense" class="on">支出</button>
-      <button data-t="income">收入</button>
-    </div>
+  <!-- 中间：分类（纯文字，一行 5 个，点一下选中） -->
+  <div class="catgrid-wrap"><div class="catgrid" id="quickbar"></div></div>
 
-    <div class="amount-box">
-      <div class="cap">
-        <span>金额</span>
-        <button class="cat-hint" id="catHint" type="button">记入 <b id="catHintN">🍚 餐饮</b> ▾</button>
+  <!-- 底部：类型/备注 + 金额 + 数字键盘 -->
+  <div class="pad">
+    <div class="ctrl">
+      <div class="seg" id="typeSeg">
+        <button data-t="expense" class="on">支出</button>
+        <button data-t="income">收入</button>
       </div>
-      <div class="amount-line">
-        <span class="cur">¥</span>
-        <span class="val placeholder expense" id="amountVal">0.00</span>
-      </div>
-    </div>
-
-    <div class="meta">
       <input class="note" id="noteInput" placeholder="备注（可空）" maxlength="40">
-      <label class="date">
-        <span>📅</span><span id="dateLabel">今天</span>
-        <input type="date" id="dateInput">
-      </label>
     </div>
-
-    <div class="keys">
+    <div class="amt-row">
+      <span class="cur">¥</span>
+      <span class="val placeholder expense" id="amountVal">0.00</span>
+      <span class="catnow" id="catNow">餐饮</span>
+    </div>
+    <div class="keys" id="keys">
       <button data-k="1">1</button>
       <button data-k="2">2</button>
       <button data-k="3">3</button>
@@ -510,37 +418,24 @@
       <button data-k="0">0</button>
       <button data-k="00">00</button>
     </div>
-  </section>
-
-  <section class="summary">
-    <div class="cap">本月支出</div>
-    <div class="big" id="sumExpense">¥0.00</div>
-    <div class="split">
-      <div>
-        <div class="k">本月收入</div>
-        <div class="v income" id="sumIncome">¥0.00</div>
-      </div>
-      <div>
-        <div class="k">本月结余</div>
-        <div class="v neutral" id="sumBalance">¥0.00</div>
-      </div>
-    </div>
-  </section>
-
-  <div class="cat-head" id="catHead">
-    <span>选择分类</span>
-    <span class="hint" id="catNow">当前：餐饮</span>
   </div>
-  <div class="quickbar" id="quickbar"></div>
-
-  <div class="list-head">
-    <div class="t">流水<span class="count" id="recCount"></span></div>
-  </div>
-
-  <div class="groups" id="groups"></div>
 </div>
 
 <div class="mask" id="mask"></div>
+
+<!-- 流水（点顶部「流水」打开） -->
+<div class="sheet" id="listSheet">
+  <div class="sheet-grip"></div>
+  <div class="month-nav">
+    <button id="prevM" aria-label="上个月">‹</button>
+    <div class="label" id="monthLabel">—</div>
+    <button id="nextM" aria-label="下个月">›</button>
+  </div>
+  <div class="list-head">
+    <div class="t">流水<span class="count" id="recCount"></span></div>
+  </div>
+  <div class="groups" id="groups"></div>
+</div>
 
 <!-- 更多菜单 -->
 <div class="sheet" id="menuSheet">
@@ -763,12 +658,12 @@
     var exp=0, inc=0;
     inMonth.forEach(function(r){ if(r.type==='expense') exp+=r.amount; else inc+=r.amount; });
 
-    document.getElementById('sumExpense').textContent = '¥' + fmtMoney(exp);
-    document.getElementById('sumIncome').textContent  = '¥' + fmtMoney(inc);
-    var bal = inc - exp;
-    var balEl = document.getElementById('sumBalance');
-    balEl.textContent = '¥' + fmtMoney(bal);
-    balEl.className = 'v ' + (bal>0?'income':(bal<0?'expense':'neutral'));
+    var today = new Date();
+    var pfx = (today.getFullYear() === y && today.getMonth() === m) ? '本月' : (m + 1) + '月';
+    document.getElementById('hExpL').textContent = pfx + '支出';
+    document.getElementById('hIncL').textContent = pfx + '收入';
+    document.getElementById('hExp').textContent = '¥' + fmtMoney(exp);
+    document.getElementById('hInc').textContent = '¥' + fmtMoney(inc);
 
     document.getElementById('recCount').textContent = inMonth.length ? ' · ' + inMonth.length + ' 笔' : '';
 
@@ -834,12 +729,10 @@
     CATS.forEach(function(c){
       var type = c.t === 'income' ? 'income' : 'expense';
       html += '<button class="qbtn' + (c.t === 'income' ? ' qinc' : '') +
-        '" data-cat="' + c.k + '" data-t="' + type + '" title="' + c.n + '（点一下直接记一笔）">' +
-        '<span class="qe">' + c.e + '</span><span class="qn">' + c.n + '</span></button>';
+        '" data-cat="' + c.k + '" data-t="' + type + '">' + c.n + '</button>';
     });
     // 「快捷」动作按钮：弹出一键记账模板菜单
-    html += '<button class="qbtn qmain" data-act="quick" title="一键记账模板">' +
-      '<span class="qe">⚡</span><span class="qn">快捷</span></button>';
+    html += '<button class="qbtn qmain" data-act="quick">快捷</button>';
     document.getElementById('quickbar').innerHTML = html;
   }
 
@@ -960,13 +853,11 @@
     var has = d.amountStr !== '' && parseFloat(d.amountStr) > 0;
     av.textContent = has ? fmtMoney(parseFloat(d.amountStr)) : '0.00';
     av.className = 'val ' + (has ? d.type : 'placeholder ' + d.type);
-    document.getElementById('dateLabel').textContent = fmtDateHuman(d.date);
+    document.getElementById('dateLabel').textContent = fmtDateHuman(d.date) + ' ' + fmtWeekday(d.date);
     document.getElementById('saveBtn').disabled = !has;
 
     var c = findCat(d.type, d.cat);
-    var label = c ? (c.e + ' ' + c.n) : '未分类';
-    document.getElementById('catHintN').textContent = label;
-    document.getElementById('catNow').textContent = '当前：' + (c ? c.n : '未分类');
+    document.getElementById('catNow').textContent = c ? c.n : '未分类';
 
     // 分类网格选中态
     Array.prototype.forEach.call(
@@ -1022,7 +913,6 @@
     document.getElementById('noteInput').value = '';
     render();
     renderEntry();
-    if(window.scrollTo) window.scrollTo({ top:0, behavior:'smooth' });
     toast('已记下 ' + (cat ? cat.e + ' ' + cat.n + ' ' : '') + '¥' + fmtMoney(amt));
   }
 
@@ -1057,7 +947,7 @@
     if(!document.querySelector('.sheet.on')) document.getElementById('mask').classList.remove('on');
   }
   function closeAll(){
-    ['menuSheet','tmplSheet','tplEditSheet','detailSheet'].forEach(closeSheet);
+    ['listSheet','menuSheet','tmplSheet','tplEditSheet','detailSheet'].forEach(closeSheet);
   }
 
   /* ---------- Toast ---------- */
@@ -1293,11 +1183,8 @@
 
   /* ---------- 事件绑定 ---------- */
   function bind(){
-    document.getElementById('catHint').addEventListener('click', function(){
-      var h = document.getElementById('catHead');
-      if(h && h.scrollIntoView) h.scrollIntoView({ behavior:'smooth', block:'start' });
-    });
     document.getElementById('menuBtn').addEventListener('click', function(){ openSheet('menuSheet'); });
+    document.getElementById('listBtn').addEventListener('click', function(){ render(); openSheet('listSheet'); });
     document.getElementById('mask').addEventListener('click', closeAll);
     document.getElementById('saveBtn').addEventListener('click', commit);
     document.getElementById('closeDetail').addEventListener('click', function(){ closeSheet('detailSheet'); });
@@ -1333,8 +1220,6 @@
       // 分类自带收支属性时自动切换；通用分类（给于/其他）保持当前收支
       if(cat.t === 'income' || cat.t === 'expense') state.draft.type = cat.t;
       renderEntry();
-      var card = document.getElementById('entryCard');
-      if(card && card.scrollIntoView) card.scrollIntoView({ behavior:'smooth', block:'start' });
     });
 
     // 菜单

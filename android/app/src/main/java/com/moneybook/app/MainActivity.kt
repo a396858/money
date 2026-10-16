@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,7 +36,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -227,6 +227,10 @@ fun AppRoot(dao: RecordDao) {
     var showTemplates by remember { mutableStateOf(false) }
     var editingTplIndex by remember { mutableStateOf(-1) }
 
+    // 流水弹层 / 日期选择
+    var showRecords by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 
     fun saveTemplates(list: List<Template?>) {
@@ -265,27 +269,56 @@ fun AppRoot(dao: RecordDao) {
     }
 
     val inMonth = monthRecords(allRecords, viewMonth)
-    val totalExpense = inMonth.filter { it.type == RecordType.EXPENSE }.sumOf { it.amount }
-    val totalIncome = inMonth.filter { it.type == RecordType.INCOME }.sumOf { it.amount }
 
-    // 流水折叠
-    val visibleRecords = if (expanded || inMonth.size <= PAGE_SIZE) inMonth else inMonth.take(PAGE_SIZE)
-    val hiddenCount = inMonth.size - visibleRecords.size
+    // 本月（当前自然月）收支，用于顶部两行小字
+    val curMonthRecords = monthRecords(allRecords, YearMonth.now())
+    val curExpense = curMonthRecords.filter { it.type == RecordType.EXPENSE }.sumOf { it.amount }
+    val curIncome = curMonthRecords.filter { it.type == RecordType.INCOME }.sumOf { it.amount }
 
     Scaffold(containerColor = PageBg) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
         ) {
-            // 记一笔（常驻首页顶部，打开即可输入金额）
+            // 顶部两行小字：日期 + 本月收支
+            HeaderBar(
+                date = entryDate,
+                expense = curExpense,
+                income = curIncome,
+                onDateClick = { showDatePicker = true },
+                onList = { showRecords = true },
+                onExport = {
+                    if (yearRecords(allRecords, viewMonth.year).isEmpty()) {
+                        toast("今年没有记录可导出")
+                    } else {
+                        exportTarget = viewMonth.year
+                        exportLauncher.launch("记账本_${viewMonth.year}年.csv")
+                    }
+                }
+            )
+
+            // 中间：分类（纯文字，一行 5 个，点一下选中）
+            QuickBar(
+                currentCatId = entryCatId,
+                onQuick = { showTemplates = true },
+                onCategory = { catId, kind ->
+                    entryCatId = catId
+                    when (kind) {
+                        CatKind.EXPENSE -> entryType = RecordType.EXPENSE
+                        CatKind.INCOME -> entryType = RecordType.INCOME
+                        CatKind.BOTH -> Unit    // 通用分类保持当前收支
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            )
+
+            // 底部：类型/备注 + 金额 + 压缩数字键盘
             EntryCard(
                 type = entryType,
                 catId = entryCatId,
                 amountText = amountText,
                 note = entryNote,
-                date = entryDate,
                 onTypeChange = { t ->
                     if (entryType != t) {
                         entryType = t
@@ -294,7 +327,6 @@ fun AppRoot(dao: RecordDao) {
                 },
                 onKey = { k -> amountText = applyKey(amountText, k) },
                 onNoteChange = { if (it.length <= 40) entryNote = it },
-                onDateChange = { entryDate = it },
                 onSave = {
                     val amt = amountText.toDoubleOrNull()
                     if (amt == null || amt <= 0) {
@@ -317,70 +349,27 @@ fun AppRoot(dao: RecordDao) {
                             // 保留分类与日期，清空金额和备注，方便接着记下一笔
                             amountText = ""
                             entryNote = ""
-                            toast("已记下 ${cat.emoji} ${cat.name} ¥${fmtMoney(amt)}")
+                            toast("已记下 ${cat.name} ¥${fmtMoney(amt)}")
                         }
                     }
                 }
             )
-
-            MonthSwitcher(
-                month = viewMonth,
-                onPrev = { viewMonth = viewMonth.minusMonths(1); expanded = false },
-                onNext = { viewMonth = viewMonth.plusMonths(1); expanded = false },
-                onExport = {
-                    if (yearRecords(allRecords, viewMonth.year).isEmpty()) {
-                        toast("今年没有记录可导出")
-                    } else {
-                        exportTarget = viewMonth.year
-                        exportLauncher.launch("记账本_${viewMonth.year}年.csv")
-                    }
-                }
-            )
-
-            SummaryCard(totalExpense, totalIncome)
-
-            Text(
-                text = "选择分类",
-                fontSize = 13.sp,
-                color = InkGray,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp)
-            )
-
-            // 分类网格：点一下选中该分类，金额键盘输入的账就归到它
-            QuickBar(
-                currentCatId = entryCatId,
-                onQuick = { showTemplates = true },
-                onCategory = { catId, kind ->
-                    entryCatId = catId
-                    when (kind) {
-                        CatKind.EXPENSE -> entryType = RecordType.EXPENSE
-                        CatKind.INCOME -> entryType = RecordType.INCOME
-                        CatKind.BOTH -> Unit    // 通用分类保持当前收支
-                    }
-                }
-            )
-
-            Text(
-                text = "流水 · ${inMonth.size} 笔",
-                fontSize = 13.sp,
-                color = InkGray,
-                modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 8.dp)
-            )
-
-            if (inMonth.isEmpty()) {
-                EmptyHint(hasAny = allRecords.isNotEmpty())
-            } else {
-                RecordList(
-                    records = visibleRecords,
-                    hiddenCount = hiddenCount,
-                    onMore = { expanded = true },
-                    onItemLongClick = { pendingDelete = it }
-                )
-            }
-
-            Spacer(Modifier.height(28.dp))
         }
+    }
+
+    // 流水弹层（点顶部「流水」打开）
+    if (showRecords) {
+        RecordListSheet(
+            month = viewMonth,
+            records = inMonth,
+            hasAny = allRecords.isNotEmpty(),
+            expanded = expanded,
+            onMore = { expanded = true },
+            onPrev = { viewMonth = viewMonth.minusMonths(1); expanded = false },
+            onNext = { viewMonth = viewMonth.plusMonths(1); expanded = false },
+            onDismiss = { showRecords = false },
+            onItemLongClick = { pendingDelete = it }
+        )
     }
 
     // 快捷模板弹层
@@ -434,6 +423,29 @@ fun AppRoot(dao: RecordDao) {
         )
     }
 
+    if (showDatePicker) {
+        val dpState = rememberDatePickerState(
+            initialSelectedDateMillis = entryDate
+                .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dpState.selectedDateMillis?.let {
+                        entryDate = Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate()
+                    }
+                    showDatePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            DatePicker(state = dpState)
+        }
+    }
+
     pendingDelete?.let { target ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
@@ -458,90 +470,32 @@ fun AppRoot(dao: RecordDao) {
     }
 }
 
-// ---------- 月份切换行 ----------
+// ---------- 月份切换行（流水弹层内） ----------
 
 @Composable
-fun MonthSwitcher(month: YearMonth, onPrev: () -> Unit, onNext: () -> Unit, onExport: () -> Unit) {
+fun MonthSwitcher(month: YearMonth, onPrev: () -> Unit, onNext: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Spacer(Modifier.width(48.dp))
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onPrev) {
-                Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "上个月", tint = InkGray)
-            }
-            Text(
-                text = "${month.year}年${month.monthValue}月",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            IconButton(onClick = onNext) {
-                Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "下个月", tint = InkGray)
-            }
+        IconButton(onClick = onPrev) {
+            Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "上个月", tint = InkGray)
         }
-        IconButton(onClick = onExport) {
-            Icon(Icons.Filled.Share, contentDescription = "导出今年 CSV", tint = InkGray)
+        Text(
+            text = "${month.year}年${month.monthValue}月",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        IconButton(onClick = onNext) {
+            Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "下个月", tint = InkGray)
         }
     }
 }
 
-// ---------- 汇总卡 ----------
-
-@Composable
-fun SummaryCard(expense: Double, income: Double) {
-    val balance = income - expense
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Text("本月支出", fontSize = 13.sp, color = InkGray)
-            Text(
-                text = "¥${fmtMoney(expense)}",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = ExpenseRed
-            )
-            Spacer(Modifier.height(14.dp))
-            Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
-                    Text("本月收入", fontSize = 12.sp, color = InkGray)
-                    Text(
-                        "¥${fmtMoney(income)}",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = IncomeGreen
-                    )
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("本月结余", fontSize = 12.sp, color = InkGray)
-                    Text(
-                        "¥${fmtMoney(balance)}",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (balance >= 0) Color(0xFF1B1F24) else ExpenseRed
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ---------- 分类网格（一行 5 个，点一下选中该分类） ----------
+// ---------- 分类网格（一行 5 个，纯文字，撑满中部剩余空间） ----------
 
 private data class QuickCell(
-    val emoji: String,
     val label: String,
     val income: Boolean,
     val highlight: Boolean,
@@ -553,40 +507,40 @@ private data class QuickCell(
 fun QuickBar(
     currentCatId: String,
     onQuick: () -> Unit,
-    onCategory: (String, CatKind) -> Unit
+    onCategory: (String, CatKind) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     // 每个分类一个按钮：点一下选中，金额键盘输入的账就归到它；末尾是「快捷」模板按钮
     val cells = CATS.map { c ->
         QuickCell(
-            emoji = c.emoji,
             label = c.name,
             income = c.kind == CatKind.INCOME,
             highlight = false,
             selected = c.id == currentCatId
         ) { onCategory(c.id, c.kind) }
-    } + QuickCell("⚡", "快捷", false, true, false, onQuick)
+    } + QuickCell("快捷", false, true, false, onQuick)
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        modifier = modifier
             .fillMaxWidth()
-            .padding(top = 10.dp)
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         cells.chunked(5).forEach { row ->
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 row.forEach { cell ->
                     QuickPill(
-                        emoji = cell.emoji,
                         label = cell.label,
                         highlight = cell.highlight,
-                        selected = cell.selected,
                         income = cell.income,
+                        selected = cell.selected,
                         onClick = cell.action,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }
                 // 末行不满 5 个时补空位，保持每格等宽
@@ -599,7 +553,6 @@ fun QuickBar(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun QuickPill(
-    emoji: String,
     label: String,
     highlight: Boolean,
     income: Boolean = false,
@@ -607,7 +560,7 @@ fun QuickPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    Box(
         modifier = modifier
             .background(
                 when {
@@ -616,21 +569,18 @@ fun QuickPill(
                     income -> Color(0xFFEEFAF7)
                     else -> Color.White
                 },
-                RoundedCornerShape(13.dp)
+                RoundedCornerShape(12.dp)
             )
             .then(
-                if (selected) Modifier.border(1.5.dp, BrandBlue, RoundedCornerShape(13.dp))
+                if (selected) Modifier.border(1.5.dp, BrandBlue, RoundedCornerShape(12.dp))
                 else Modifier
             )
-            .combinedClickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .combinedClickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Text(emoji, fontSize = 20.sp)
-        Spacer(Modifier.height(4.dp))
         Text(
             label,
-            fontSize = 11.sp,
+            fontSize = 13.sp,
             maxLines = 1,
             color = when {
                 highlight -> Color.White
@@ -902,6 +852,120 @@ fun TemplateEditSheet(
     }
 }
 
+// ---------- 顶部两行小字（日期 / 本月收支） ----------
+
+@Composable
+fun HeaderBar(
+    date: LocalDate,
+    expense: Double,
+    income: Double,
+    onDateClick: () -> Unit,
+    onList: () -> Unit,
+    onExport: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 10.dp, top = 6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val today = LocalDate.now()
+            Text(
+                text = (if (date == today) "今天" else "${date.monthValue}月${date.dayOfMonth}日") +
+                    " " + weekdayCn(date) + " ▾",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable(onClick = onDateClick)
+                    .padding(horizontal = 4.dp, vertical = 6.dp)
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "流水",
+                fontSize = 13.sp,
+                color = InkGray,
+                modifier = Modifier
+                    .clickable(onClick = onList)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+            Text(
+                "导出",
+                fontSize = 13.sp,
+                color = InkGray,
+                modifier = Modifier
+                    .clickable(onClick = onExport)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
+        Row(Modifier.padding(start = 4.dp, top = 1.dp)) {
+            Text("本月支出 ", fontSize = 12.sp, color = InkGray)
+            Text(
+                "¥${fmtMoney(expense)}",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = ExpenseRed
+            )
+            Spacer(Modifier.width(14.dp))
+            Text("本月收入 ", fontSize = 12.sp, color = InkGray)
+            Text(
+                "¥${fmtMoney(income)}",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = IncomeGreen
+            )
+        }
+    }
+}
+
+// ---------- 流水弹层（月份切换 + 当月流水，可滚动） ----------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RecordListSheet(
+    month: YearMonth,
+    records: List<Record>,
+    hasAny: Boolean,
+    expanded: Boolean,
+    onMore: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onDismiss: () -> Unit,
+    onItemLongClick: (Record) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = PageBg,
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            MonthSwitcher(month = month, onPrev = onPrev, onNext = onNext)
+
+            if (records.isEmpty()) {
+                EmptyHint(hasAny = hasAny)
+            } else {
+                val visible = if (expanded || records.size <= PAGE_SIZE) records else records.take(PAGE_SIZE)
+                val hidden = records.size - visible.size
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    RecordList(
+                        records = visible,
+                        hiddenCount = hidden,
+                        onMore = onMore,
+                        onItemLongClick = onItemLongClick
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ---------- 流水列表 ----------
 
 @Composable
@@ -1043,7 +1107,7 @@ fun EmptyHint(hasAny: Boolean) {
         Text("🧾", fontSize = 40.sp)
         Spacer(Modifier.height(10.dp))
         Text(
-            if (hasAny) "这个月还没有记录\n换个月份看看？" else "还没有任何记录\n点右下角「记一笔」或上方快捷按钮开始",
+            if (hasAny) "这个月还没有记录\n换个月份看看？" else "还没有任何记录\n在首页输入金额就能记第一笔",
             fontSize = 14.sp,
             color = InkGray,
             lineHeight = 22.sp,
@@ -1078,39 +1142,34 @@ fun applyKey(current: String, k: String): String {
     return s
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryCard(
     type: RecordType,
     catId: String,
     amountText: String,
     note: String,
-    date: LocalDate,
     onTypeChange: (RecordType) -> Unit,
     onKey: (String) -> Unit,
     onNoteChange: (String) -> Unit,
-    onDateChange: (LocalDate) -> Unit,
     onSave: () -> Unit
 ) {
     val cat = findCat(type, catId)
     val amount = amountText.toDoubleOrNull()
     val hasAmount = amount != null && amount > 0
-    var showDatePicker by remember { mutableStateOf(false) }
 
     Surface(
         color = Color.White,
-        shape = RoundedCornerShape(18.dp),
-        shadowElevation = 1.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shadowElevation = 8.dp,
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column {
-            // 收 / 支 + 当前分类
+            // 收 / 支 + 备注
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, end = 14.dp, top = 12.dp),
+                    .padding(start = 12.dp, end = 12.dp, top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1136,28 +1195,27 @@ fun EntryCard(
                         )
                     }
                 )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "记入 ${cat.emoji} ${cat.name}",
-                    fontSize = 12.sp,
-                    color = BrandBlue,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = onNoteChange,
+                    placeholder = { Text("备注（可空）", fontSize = 13.sp, color = Color(0xFFAAB2BC)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            // 金额
+            // 金额 + 当前分类
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = 16.dp, end = 12.dp, top = 2.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
-                Text("¥", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = InkGray)
+                Text("¥", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = InkGray)
                 Spacer(Modifier.width(4.dp))
                 Text(
                     text = if (hasAmount) fmtMoney(amount!!) else "0.00",
-                    fontSize = 34.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
                     color = when {
                         !hasAmount -> Color(0xFFC8CED6)
@@ -1168,76 +1226,22 @@ fun EntryCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-            }
-
-            // 备注 + 日期
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = onNoteChange,
-                    placeholder = { Text("备注（可空）", fontSize = 13.sp, color = Color(0xFFAAB2BC)) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
                 Surface(
-                    color = Color(0xFFF4F6F8),
-                    shape = RoundedCornerShape(11.dp),
-                    modifier = Modifier.clickable { showDatePicker = true }
+                    color = Color(0xFFEEF4FF),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("📅", fontSize = 13.sp)
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            text = if (date == LocalDate.now()) "今天"
-                                   else date.monthValue.toString() + "月" + date.dayOfMonth + "日",
-                            fontSize = 13.sp,
-                            color = InkGray,
-                            maxLines = 1
-                        )
-                    }
+                    Text(
+                        cat.name,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = BrandBlue,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-
             // 自带数字键盘（不弹系统输入法）
             Keypad(onKey = onKey, onSave = onSave, saveEnabled = hasAmount)
-
-            Spacer(Modifier.height(4.dp))
-        }
-    }
-
-    if (showDatePicker) {
-        val dpState = rememberDatePickerState(
-            initialSelectedDateMillis = date
-                .atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    dpState.selectedDateMillis?.let {
-                        onDateChange(
-                            Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate()
-                        )
-                    }
-                    showDatePicker = false
-                }) { Text("确定") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
-            }
-        ) {
-            DatePicker(state = dpState)
         }
     }
 }
@@ -1245,7 +1249,7 @@ fun EntryCard(
 /** 内置数字键盘：左侧 0-9 / . / 00，右上角退格，右侧长条保存 */
 @Composable
 fun Keypad(onKey: (String) -> Unit, onSave: () -> Unit, saveEnabled: Boolean) {
-    val keyH = 52.dp
+    val keyH = 46.dp
     val gap = 1.dp
     val digitRows = listOf(
         listOf("1", "2", "3"),
