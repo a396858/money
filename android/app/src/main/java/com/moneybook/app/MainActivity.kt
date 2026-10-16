@@ -287,7 +287,6 @@ fun AppRoot(dao: RecordDao) {
                 expense = curExpense,
                 income = curIncome,
                 onDateClick = { showDatePicker = true },
-                onList = { showRecords = true },
                 onExport = {
                     if (yearRecords(allRecords, viewMonth.year).isEmpty()) {
                         toast("今年没有记录可导出")
@@ -353,6 +352,12 @@ fun AppRoot(dao: RecordDao) {
                         }
                     }
                 }
+            )
+
+            // 屏幕最底：最近一笔（点一下看全部流水）
+            LastRecordBar(
+                record = allRecords.maxWithOrNull(compareBy({ it.date }, { it.createdAt })),
+                onClick = { showRecords = true }
             )
         }
     }
@@ -521,10 +526,10 @@ fun QuickBar(
     } + QuickCell("快捷", false, true, false, onQuick)
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom),
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 2.dp)
     ) {
         cells.chunked(5).forEach { row ->
             Row(
@@ -860,7 +865,6 @@ fun HeaderBar(
     expense: Double,
     income: Double,
     onDateClick: () -> Unit,
-    onList: () -> Unit,
     onExport: () -> Unit
 ) {
     Column(
@@ -881,14 +885,6 @@ fun HeaderBar(
             )
             Spacer(Modifier.weight(1f))
             Text(
-                "流水",
-                fontSize = 13.sp,
-                color = InkGray,
-                modifier = Modifier
-                    .clickable(onClick = onList)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            )
-            Text(
                 "导出",
                 fontSize = 13.sp,
                 color = InkGray,
@@ -898,21 +894,84 @@ fun HeaderBar(
             )
         }
         Row(Modifier.padding(start = 4.dp, top = 1.dp)) {
-            Text("本月支出 ", fontSize = 12.sp, color = InkGray)
+            Text("本月支出 ", fontSize = 12.5.sp, color = InkGray)
             Text(
                 "¥${fmtMoney(expense)}",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
                 color = ExpenseRed
             )
             Spacer(Modifier.width(14.dp))
-            Text("本月收入 ", fontSize = 12.sp, color = InkGray)
+            Text("本月收入 ", fontSize = 12.5.sp, color = InkGray)
             Text(
                 "¥${fmtMoney(income)}",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
                 color = IncomeGreen
             )
+        }
+    }
+}
+
+// ---------- 屏幕最底：最近一笔（点一下看全部流水） ----------
+
+@Composable
+fun LastRecordBar(
+    record: Record?,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, top = 5.dp)
+            .background(Color.White, RoundedCornerShape(12.dp))
+            .border(0.5.dp, Color(0xFFE8EBEF), RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        if (record == null) {
+            Text(
+                "还没有记录 · 上面选分类、输金额就能记第一笔",
+                fontSize = 12.sp,
+                color = InkGray,
+                maxLines = 1
+            )
+        } else {
+            val d = LocalDate.parse(record.date)
+            val cat = findCat(record.type, record.categoryId)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    cat.name,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1B1F24),
+                    maxLines = 1
+                )
+                if (record.note.isNotBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        record.note,
+                        fontSize = 12.sp,
+                        color = InkGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "${d.monthValue}月${d.dayOfMonth}日",
+                    fontSize = 11.5.sp,
+                    color = InkGray
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    (if (record.type == RecordType.EXPENSE) "-" else "+") + "¥" + fmtMoney(record.amount),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (record.type == RecordType.EXPENSE) ExpenseRed else IncomeGreen
+                )
+            }
         }
     }
 }
