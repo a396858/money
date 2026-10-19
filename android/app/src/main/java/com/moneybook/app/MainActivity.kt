@@ -607,12 +607,13 @@ fun QuickBar(
             label = c.name,
             income = c.kind == CatKind.INCOME,
             highlight = false,
-            selected = c.id == currentCatId
-        ) { onCategory(c.id, c.kind) }
+            selected = c.id == currentCatId,
+            action = { onCategory(c.id, c.kind) }
+        )
     } + QuickCell("快捷", false, true, false, onQuick) +
         customNames.mapIndexed { i, n ->
             if (n.isBlank()) {
-                QuickCell("＋", false, false, false) { onEditCustom() }
+                QuickCell("＋", false, false, false, action = { onEditCustom() })
             } else {
                 QuickCell(
                     label = n,
