@@ -47,8 +47,8 @@
   }
   html,body{overflow:hidden;height:100%;}
 
-  /* ============ 顶部：两行小字（日期 / 本月收支） ============ */
-  .head{flex-shrink:0;padding:0 2px 8px;}
+  /* ============ 顶部：日期 + 本月收支 + 总收入总支出 ============ */
+  .head{flex-shrink:0;padding:0 2px 4px;}
   .head .hl{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:26px;}
   .date-pill{
     position:relative;overflow:hidden;
@@ -76,13 +76,49 @@
   .head .sub .e b{color:var(--expense);}
   .head .sub .i b{color:var(--income);}
 
-  /* ============ 中间：分类网格（纯文字，一行 5 个，紧贴键盘上方） ============ */
-  .catgrid-wrap{flex:1;min-height:0;display:flex;align-items:flex-end;padding-bottom:2px;}
+  /* 第三行：总收入 / 总支出（全部记录累计，字略小） */
+  .head .sum{
+    display:flex;align-items:baseline;gap:14px;padding-left:5px;margin-top:1px;
+    font-size:11.5px;color:var(--text-3);font-variant-numeric:tabular-nums;
+    white-space:nowrap;overflow:hidden;
+  }
+  .head .sum > span{display:inline-flex;align-items:baseline;min-width:0;}
+  .head .sum b{font-size:14px;font-weight:600;margin-left:3px;letter-spacing:-.2px;color:var(--text-2);}
+  .head .sum .e b{color:#c0565b;}
+  .head .sum .i b{color:#0e8b7d;}
+
+  /* ============ 分类上方：最近三条记录 ============ */
+  .recent{
+    flex-shrink:0;margin:0 2px 4px;
+    background:var(--card);border-radius:12px;
+    padding:4px 10px;
+    box-shadow:0 1px 2px rgba(16,24,40,.05),0 0 0 1px rgba(16,24,40,.04);
+  }
+  .recent-empty{
+    display:flex;align-items:center;height:19px;
+    font-size:11.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;
+  }
+  .recent .rr{
+    display:flex;align-items:center;gap:6px;height:19px;
+    font-size:12px;color:var(--text-2);
+  }
+  .recent .rr .c{flex-shrink:0;font-weight:600;color:var(--text);font-size:12px;}
+  .recent .rr .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-3);font-size:11px;}
+  .recent .rr .d{flex-shrink:0;color:var(--text-3);font-size:10.5px;}
+  .recent .rr .a{
+    flex-shrink:0;font-weight:700;font-size:12.5px;
+    font-variant-numeric:tabular-nums;letter-spacing:-.2px;min-width:74px;text-align:right;
+  }
+  .recent .rr .a.expense{color:var(--expense);}
+  .recent .rr .a.income{color:var(--income);}
+
+  /* ============ 分类网格（纯文字，一行 5 个，5 行撑满剩余空间） ============ */
+  .catgrid-wrap{flex:1;min-height:0;display:flex;align-items:stretch;padding-bottom:2px;}
   .catgrid{
-    width:100%;
+    width:100%;height:100%;
     display:grid;grid-template-columns:repeat(5,1fr);
-    grid-auto-rows:minmax(34px,8.6vh);
-    gap:6px;
+    grid-template-rows:repeat(5,minmax(0,1fr));
+    gap:5px;
   }
   .qbtn{
     display:flex;align-items:center;justify-content:center;
@@ -91,6 +127,11 @@
     font-size:13px;color:var(--text-2);white-space:nowrap;
     box-shadow:0 1px 2px rgba(16,24,40,.04),0 0 0 1px rgba(16,24,40,.03);
     transition:transform .12s ease;
+  }
+  .qbtn.qcustom{color:var(--text);}
+  .qbtn.qempty{
+    background:transparent;color:#b3bcc7;
+    box-shadow:none;border:1px dashed #d7dde5;font-size:17px;font-weight:400;
   }
   .qbtn:active{transform:scale(.95);}
   .qbtn.qmain{
@@ -156,33 +197,14 @@
   .keys .save:active{background:#2560d4;}
   .keys .save:disabled{background:#c3cbd6;}
 
-  /* ============ 屏幕最底：最近一笔（点一下看全部流水） ============ */
-  .lastrec{
-    flex-shrink:0;margin-top:5px;width:100%;
-    display:flex;align-items:center;gap:8px;
-    padding:7px 11px;border-radius:12px;
-    background:var(--card);text-align:left;
-    font-size:12.5px;color:var(--text-2);
-    white-space:nowrap;overflow:hidden;
-    box-shadow:0 1px 2px rgba(16,24,40,.05),0 0 0 1px rgba(16,24,40,.04);
+  /* ============ 自定义分类编辑 ============ */
+  .cat-edit{padding:14px 16px 18px;}
+  .cat-edit h3{margin:0 0 4px;font-size:15px;}
+  .cat-edit p{margin:0 0 12px;font-size:12px;color:var(--text-3);line-height:1.5;}
+  .custom-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px;}
+  .custom-grid .fld{
+    width:100%;text-align:center;padding:9px 0;font-size:14px;font-weight:600;
   }
-  .lastrec:active{background:#f7f9fc;}
-  .lastrec .lr-tag{
-    flex-shrink:0;font-size:10.5px;font-weight:600;color:var(--brand);
-    background:#eef4ff;border-radius:6px;padding:2px 6px;
-  }
-  .lastrec .lr-cat{flex-shrink:0;font-weight:600;color:var(--text);}
-  .lastrec .lr-note{
-    flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text-3);
-  }
-  .lastrec .lr-date{flex-shrink:0;margin-left:auto;color:var(--text-3);font-size:11.5px;}
-  .lastrec .lr-amt{
-    flex-shrink:0;font-weight:700;font-size:14px;
-    font-variant-numeric:tabular-nums;letter-spacing:-.2px;
-  }
-  .lastrec .lr-amt.expense{color:var(--expense);}
-  .lastrec .lr-amt.income{color:var(--income);}
-  .lastrec .lr-empty{color:var(--text-3);}
 
   /* 流水弹层内的月份导航 */
   .month-nav{
@@ -412,7 +434,14 @@
       <span class="e"><span id="hExpL">本月支出</span><b id="hExp">¥0.00</b></span>
       <span class="i"><span id="hIncL">本月收入</span><b id="hInc">¥0.00</b></span>
     </div>
+    <div class="sum">
+      <span class="e"><span>总支出</span><b id="hTotalExp">¥0.00</b></span>
+      <span class="i"><span>总收入</span><b id="hTotalInc">¥0.00</b></span>
+    </div>
   </div>
+
+  <!-- 分类上方：最近三条记录（点一下看全部流水） -->
+  <div class="recent" id="recentBox"></div>
 
   <!-- 中间：分类（纯文字，一行 5 个，点一下选中） -->
   <div class="catgrid-wrap"><div class="catgrid" id="quickbar"></div></div>
@@ -450,7 +479,6 @@
   </div>
 
   <!-- 屏幕最底：最近一条记录（点一下打开全部流水） -->
-  <button class="lastrec" id="lastRec"></button>
 </div>
 
 <div class="mask" id="mask"></div>
@@ -474,6 +502,7 @@
   <div class="sheet-grip"></div>
   <div class="menu-list">
     <button class="mi" data-m="list"><span class="mi-ico">📋</span><span>查看全部流水<span class="mi-sub">按月翻看、改月份</span></span></button>
+    <button class="mi" data-m="cats"><span class="mi-ico">🏷️</span><span>编辑自定义分类<span class="mi-sub">最后一行 5 个按钮的名字（2 个字）</span></span></button>
     <div class="sep"></div>
     <button class="mi" data-m="xlsx"><span class="mi-ico">📊</span><span>导出今年 Excel 表格<span class="mi-sub">生成 .xlsx 文件，WPS / Excel 直接打开</span></span></button>
     <button class="mi" data-m="csv"><span class="mi-ico">📄</span><span>导出今年 CSV<span class="mi-sub">通用表格格式</span></span></button>
@@ -516,6 +545,20 @@
   </div>
 </div>
 
+<!-- 自定义分类编辑 -->
+<div class="sheet" id="catEditSheet">
+  <div class="sheet-grip"></div>
+  <div class="cat-edit">
+    <h3>自定义分类</h3>
+    <p>最后一行 5 个按钮，改成你常用的名字，最多 2 个字。留空显示「＋」，点它也能改名。</p>
+    <div class="custom-grid" id="customInputs"></div>
+    <div class="acts">
+      <button class="del" id="catEditClear">全部清空</button>
+      <button class="save" id="catEditSave">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- 详情 -->
 <div class="sheet" id="detailSheet">
   <div class="sheet-grip"></div>
@@ -544,8 +587,9 @@
   var PAGE_SIZE = 10;
 
   /* 分类表：t = 该分类适用的收支类型（expense 支出 / income 收入 / both 两者通用）
-     顺序即快捷栏按钮顺序，最后一个「快捷」是动作按钮，不是分类。 */
-  var CATS = [
+     顺序即快捷栏按钮顺序，最后一个「快捷」是动作按钮，不是分类。
+     19 个固定分类 + 最后 5 个可自定义名字的分类（第 5 行）。 */
+  var BASE_CATS = [
     {k:'food',      n:'餐饮', e:'🍚', t:'expense'},
     {k:'grocery',   n:'买菜', e:'🥬', t:'expense'},
     {k:'snack',     n:'零食', e:'🍪', t:'expense'},
@@ -566,6 +610,34 @@
     {k:'salary',    n:'工资', e:'💰', t:'income'},
     {k:'other',     n:'其他', e:'📦', t:'both'}
   ];
+
+  /* 最后一行 5 个自定义分类（名字最多 2 个字，存在本地） */
+  var CUSTOM_KEY = 'moneybook.customcats.v1';
+  var CUSTOM_COUNT = 5;
+  function customCatId(i){ return 'x' + (i + 1); }
+
+  function loadCustomCats(){
+    var arr = [];
+    try{
+      var raw = localStorage.getItem(CUSTOM_KEY);
+      var v = raw ? JSON.parse(raw) : null;
+      if(Array.isArray(v)) arr = v;
+    }catch(e){}
+    var out = [];
+    for(var i=0;i<CUSTOM_COUNT;i++){
+      out.push(typeof arr[i] === 'string' ? arr[i].slice(0,2) : '');
+    }
+    return out;
+  }
+
+  var CUSTOM_CATS = loadCustomCats();
+
+  function buildCats(){
+    return BASE_CATS.concat(CUSTOM_CATS.map(function(n, i){
+      return {k: customCatId(i), n: n, e: '🏷️', t: 'both', custom: true, idx: i};
+    }));
+  }
+  var CATS = buildCats();
 
   var DEFAULT_CAT = 'food';
 
@@ -629,8 +701,8 @@
     });
   }
   function catsFor(type){
-    var own = CATS.filter(function(c){ return c.t === type; });
-    var both = CATS.filter(function(c){ return c.t === 'both'; });
+    var own = CATS.filter(function(c){ return c.t === type && (!c.custom || c.n); });
+    var both = CATS.filter(function(c){ return c.t === 'both' && (!c.custom || c.n); });
     return own.concat(both);
   }
   function defaultCatFor(type){
@@ -650,7 +722,7 @@
   }
   function catName(type, k){
     var c = findCat(type, k);
-    return c ? c.n : '未分类';
+    return (c && c.n) ? c.n : '未分类';
   }
 
   /* ---------- 存储 ---------- */
@@ -699,9 +771,17 @@
     document.getElementById('hExp').textContent = '¥' + fmtMoney(exp);
     document.getElementById('hInc').textContent = '¥' + fmtMoney(inc);
 
+    // 总收入 / 总支出（全部记录累计，不受月份影响）
+    var tExp = 0, tInc = 0;
+    state.records.forEach(function(r){
+      if(r.type === 'expense') tExp += r.amount; else tInc += r.amount;
+    });
+    document.getElementById('hTotalExp').textContent = '¥' + fmtMoney(tExp);
+    document.getElementById('hTotalInc').textContent = '¥' + fmtMoney(tInc);
+
     document.getElementById('recCount').textContent = inMonth.length ? ' · ' + inMonth.length + ' 笔' : '';
 
-    renderLast();
+    renderRecent();
 
     var wrap = document.getElementById('groups');
     if(!inMonth.length){
@@ -759,44 +839,55 @@
     wrap.innerHTML = html;
   }
 
-  /* ---------- 屏幕最底：最近一条记录 ---------- */
-  function latestRecord(){
-    var r = null;
-    for(var i=0;i<state.records.length;i++){
-      var c = state.records[i];
-      if(!c || !c.date) continue;
-      if(!r) { r = c; continue; }
-      if(c.date > r.date || (c.date === r.date && (c.ts||0) >= (r.ts||0))) r = c;
-    }
-    return r;
+  /* ---------- 分类上方：最近三条记录 ---------- */
+  function recentRecords(n){
+    var arr = state.records.filter(function(r){ return r && r.date; }).slice();
+    arr.sort(function(a, b){
+      if(a.date === b.date) return (b.ts||0) - (a.ts||0);
+      return a.date < b.date ? 1 : -1;
+    });
+    return arr.slice(0, n);
   }
 
-  function renderLast(){
-    var el = document.getElementById('lastRec');
+  function renderRecent(){
+    var el = document.getElementById('recentBox');
     if(!el) return;
-    var r = latestRecord();
-    if(!r){
-      el.innerHTML = '<span class="lr-empty">还没有记录 · 上面选分类、输金额就能记第一笔</span>';
+    var list = recentRecords(3);
+    if(!list.length){
+      el.innerHTML = '<div class="recent-empty">还没有记录 · 选分类、输金额就能记第一笔</div>';
       return;
     }
-    var cat = findCat(r.type, r.cat);
-    el.innerHTML =
-      '<span class="lr-cat">' + esc(cat ? cat.n : '未分类') + '</span>' +
-      (r.note ? '<span class="lr-note">' + esc(r.note) + '</span>' : '<span class="lr-note"></span>') +
-      '<span class="lr-date">' + fmtDateHuman(r.date) + '</span>' +
-      '<span class="lr-amt ' + r.type + '">' + (r.type==='expense'?'-':'+') + '¥' + fmtMoney(r.amount) + '</span>';
+    el.innerHTML = list.map(function(r){
+      return '<div class="rr">' +
+        '<span class="c">' + esc(catName(r.type, r.cat)) + '</span>' +
+        (r.note ? '<span class="n">' + esc(r.note) + '</span>' : '<span class="n"></span>') +
+        '<span class="d">' + fmtDateHuman(r.date) + '</span>' +
+        '<span class="a ' + r.type + '">' + (r.type==='expense'?'-':'+') + '¥' + fmtMoney(r.amount) + '</span>' +
+        '</div>';
+    }).join('');
   }
 
   /* ---------- 快捷分类栏 ---------- */
   function renderQuickbar(){
     var html = '';
-    CATS.forEach(function(c){
+    // 前 4 行：19 个固定分类 + 「快捷」动作按钮（弹出一键记账模板）
+    BASE_CATS.forEach(function(c){
       var type = c.t === 'income' ? 'income' : 'expense';
       html += '<button class="qbtn' + (c.t === 'income' ? ' qinc' : '') +
         '" data-cat="' + c.k + '" data-t="' + type + '">' + c.n + '</button>';
     });
-    // 「快捷」动作按钮：弹出一键记账模板菜单
     html += '<button class="qbtn qmain" data-act="quick">快捷</button>';
+
+    // 第 5 行：5 个自定义分类（名字最多 2 个字，长按或点「＋」可改名）
+    CATS.filter(function(c){ return c.custom; }).forEach(function(c){
+      if(!c.n){
+        html += '<button class="qbtn qempty" data-editcat="' + c.idx + '">＋</button>';
+      }else{
+        html += '<button class="qbtn qcustom" data-cat="' + c.k + '" data-editcat="' + c.idx +
+          '" data-t="expense">' + esc(c.n) + '</button>';
+      }
+    });
+
     document.getElementById('quickbar').innerHTML = html;
   }
 
@@ -1011,7 +1102,7 @@
     if(!document.querySelector('.sheet.on')) document.getElementById('mask').classList.remove('on');
   }
   function closeAll(){
-    ['listSheet','menuSheet','tmplSheet','tplEditSheet','detailSheet'].forEach(closeSheet);
+    ['listSheet','menuSheet','tmplSheet','tplEditSheet','detailSheet','catEditSheet'].forEach(closeSheet);
   }
 
   /* ---------- Toast ---------- */
@@ -1245,10 +1336,47 @@
     }
   }
 
+  /* ---------- 自定义分类编辑 ---------- */
+  function openCatEdit(){
+    var box = document.getElementById('customInputs');
+    var html = '';
+    for(var i=0;i<CUSTOM_COUNT;i++){
+      html += '<input class="fld" data-i="' + i + '" maxlength="2" value="' +
+        esc(CUSTOM_CATS[i] || '') + '" placeholder="＋">';
+    }
+    box.innerHTML = html;
+    openSheet('catEditSheet');
+    setTimeout(function(){ var f = box.querySelector('.fld'); if(f) f.focus(); }, 260);
+  }
+
+  function saveCatEdit(){
+    var inputs = document.querySelectorAll('#customInputs .fld');
+    var next = [];
+    for(var i=0;i<CUSTOM_COUNT;i++){
+      var v = inputs[i] ? String(inputs[i].value || '') : '';
+      next.push(v.replace(/\s+/g, '').slice(0, 2));
+    }
+    CUSTOM_CATS = next;
+    try{ localStorage.setItem(CUSTOM_KEY, JSON.stringify(next)); }catch(e){}
+    CATS = buildCats();
+    if(!findCat(state.draft.type, state.draft.cat)) state.draft.cat = defaultCatFor(state.draft.type);
+    renderQuickbar();
+    renderEntry();
+    render();
+    closeSheet('catEditSheet');
+    toast('自定义分类已保存');
+  }
+
   /* ---------- 事件绑定 ---------- */
   function bind(){
     document.getElementById('menuBtn').addEventListener('click', function(){ openSheet('menuSheet'); });
-    document.getElementById('lastRec').addEventListener('click', function(){ render(); openSheet('listSheet'); });
+    // 最近三条：点一下看全部流水
+    document.getElementById('recentBox').addEventListener('click', function(){ render(); openSheet('listSheet'); });
+    document.getElementById('catEditSave').addEventListener('click', saveCatEdit);
+    document.getElementById('catEditClear').addEventListener('click', function(){
+      var fs = document.querySelectorAll('#customInputs .fld');
+      for(var i=0;i<fs.length;i++) fs[i].value = '';
+    });
     document.getElementById('mask').addEventListener('click', closeAll);
     document.getElementById('saveBtn').addEventListener('click', commit);
     document.getElementById('closeDetail').addEventListener('click', function(){ closeSheet('detailSheet'); });
@@ -1268,12 +1396,32 @@
     });
 
     // 分类网格：点一下选中该分类（金额键盘输入的账就归到它）
-    document.getElementById('quickbar').addEventListener('click', function(e){
+    var lpTimer = null, lpFired = false;
+    var qb = document.getElementById('quickbar');
+    var clearLp = function(){ clearTimeout(lpTimer); };
+    qb.addEventListener('pointerdown', function(e){
+      var b = e.target.closest('[data-editcat]');
+      if(!b) return;
+      lpFired = false;
+      clearLp();
+      lpTimer = setTimeout(function(){ lpFired = true; openCatEdit(); }, 600);
+    });
+    ['pointerup','pointerleave','pointercancel'].forEach(function(ev){
+      qb.addEventListener(ev, clearLp);
+    });
+
+    qb.addEventListener('click', function(e){
       var b = e.target.closest('.qbtn');
       if(!b) return;
+      if(lpFired){ lpFired = false; return; }   // 长按改名后不再触发选中
       if(b.dataset.act === 'quick'){
         renderTmplGrid();
         openSheet('tmplSheet');
+        return;
+      }
+      // 空着的自定义位：点「＋」直接改名
+      if(b.dataset.editcat !== undefined && !b.dataset.cat){
+        openCatEdit();
         return;
       }
       var k = b.dataset.cat;
@@ -1281,7 +1429,7 @@
       for(var i=0;i<CATS.length;i++) if(CATS[i].k === k) cat = CATS[i];
       if(!cat) return;
       state.draft.cat = k;
-      // 分类自带收支属性时自动切换；通用分类（给于/其他）保持当前收支
+      // 分类自带收支属性时自动切换；通用分类（给于/其他/自定义）保持当前收支
       if(cat.t === 'income' || cat.t === 'expense') state.draft.type = cat.t;
       renderEntry();
     });
@@ -1294,6 +1442,7 @@
       closeSheet('menuSheet');
       setTimeout(function(){
         if(m === 'list'){ render(); openSheet('listSheet'); }
+        else if(m === 'cats') openCatEdit();
         else if(m === 'xlsx') exportXLSX();
         else if(m === 'csv') exportCSV();
         else if(m === 'backup') backupJSON();

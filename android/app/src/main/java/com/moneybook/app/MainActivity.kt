@@ -48,6 +48,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -60,6 +61,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -90,6 +92,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import org.json.JSONArray
 
 // ---------- 品牌色 ----------
 
@@ -150,10 +153,51 @@ private val LEGACY_CAT = mapOf(
     "invest" to "salary"
 )
 
-/** 该收支类型下可选的分类（专属分类在前，通用分类在后） */
+// ---------- 自定义分类（最后一行 5 个，名字最多 2 个字，存在本地） ----------
+
+const val CUSTOM_COUNT = 5
+fun customCatId(i: Int): String = "x" + (i + 1)
+
+/** 当前生效的自定义分类名（进程级，App 启动时从本地加载） */
+var CUSTOM_CATS: List<String> = List(CUSTOM_COUNT) { "" }
+
+/** 自定义分类持久化：SharedPreferences + JSON */
+object CustomCatStore {
+    private const val PREFS = "moneybook"
+    private const val KEY = "customcats.v1"
+
+    fun load(context: Context): List<String> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY, null) ?: return List(CUSTOM_COUNT) { "" }
+        return try {
+            val arr = JSONArray(raw)
+            List(CUSTOM_COUNT) { i ->
+                if (i < arr.length()) arr.optString(i, "").take(2) else ""
+            }
+        } catch (e: Exception) {
+            List(CUSTOM_COUNT) { "" }
+        }
+    }
+
+    fun save(context: Context, names: List<String>) {
+        val arr = JSONArray()
+        for (i in 0 until CUSTOM_COUNT) arr.put(names.getOrElse(i) { "" }.take(2))
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY, arr.toString()).apply()
+    }
+}
+
+/** 全部分类 = 19 个固定分类 + 5 个自定义分类（顺序即快捷栏按钮顺序） */
+fun allCats(): List<Category> =
+    CATS + CUSTOM_CATS.mapIndexed { i, n ->
+        Category(customCatId(i), n, "🏷️", CatKind.BOTH)
+    }
+
+/** 该收支类型下可选的分类（专属分类在前，通用分类在后；没起名的自定义分类不出现） */
 fun catsOf(type: RecordType): List<Category> {
     val want = if (type == RecordType.EXPENSE) CatKind.EXPENSE else CatKind.INCOME
-    return CATS.filter { it.kind == want } + CATS.filter { it.kind == CatKind.BOTH }
+    return allCats().filter { it.kind == want } +
+        allCats().filter { it.kind == CatKind.BOTH && !(it.id.startsWith("x") && it.name.isBlank()) }
 }
 
 /** 该收支类型下的默认分类 */
@@ -162,8 +206,10 @@ fun defaultCatId(type: RecordType): String =
 
 fun findCat(type: RecordType, id: String): Category {
     val key = LEGACY_CAT[id] ?: id
-    return CATS.firstOrNull { it.id == key }
-        ?: Category("other", "其他", "📦", CatKind.BOTH)
+    val hit = allCats().firstOrNull { it.id == key }
+    // 起了名的分类照常返回；没起名（或找不到）的自定义分类回落到「其他」
+    return if (hit != null && !(hit.id.startsWith("x") && hit.name.isBlank())) hit
+    else Category("other", "其他", "📦", CatKind.BOTH)
 }
 
 private val MONEY_FMT = DecimalFormat("#,##0.00")
@@ -227,6 +273,11 @@ fun AppRoot(dao: RecordDao) {
     var showTemplates by remember { mutableStateOf(false) }
     var editingTplIndex by remember { mutableStateOf(-1) }
 
+    // 自定义分类（最后一行 5 个，先加载进进程级变量，保证 findCat 立即可用）
+    remember { CUSTOM_CATS = CustomCatStore.load(context); true }
+    var customCats by remember { mutableStateOf(CUSTOM_CATS) }
+    var showCatEdit by remember { mutableStateOf(false) }
+
     // 流水弹层 / 日期选择
     var showRecords by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -270,10 +321,19 @@ fun AppRoot(dao: RecordDao) {
 
     val inMonth = monthRecords(allRecords, viewMonth)
 
-    // 本月（当前自然月）收支，用于顶部两行小字
+    // 本月（当前自然月）收支，用于顶部小字
     val curMonthRecords = monthRecords(allRecords, YearMonth.now())
     val curExpense = curMonthRecords.filter { it.type == RecordType.EXPENSE }.sumOf { it.amount }
     val curIncome = curMonthRecords.filter { it.type == RecordType.INCOME }.sumOf { it.amount }
+
+    // 总收入 / 总支出（全部记录累计，不受月份影响）
+    val totalExpense = allRecords.filter { it.type == RecordType.EXPENSE }.sumOf { it.amount }
+    val totalIncome = allRecords.filter { it.type == RecordType.INCOME }.sumOf { it.amount }
+
+    // 最近三条记录（按日期 + 时间倒序）
+    val recent3 = allRecords
+        .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.createdAt })
+        .take(3)
 
     Scaffold(containerColor = PageBg) { padding ->
         Column(
@@ -281,11 +341,13 @@ fun AppRoot(dao: RecordDao) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 顶部两行小字：日期 + 本月收支
+            // 顶部小字：日期 + 本月收支 + 总收入总支出
             HeaderBar(
                 date = entryDate,
                 expense = curExpense,
                 income = curIncome,
+                totalExpense = totalExpense,
+                totalIncome = totalIncome,
                 onDateClick = { showDatePicker = true },
                 onExport = {
                     if (yearRecords(allRecords, viewMonth.year).isEmpty()) {
@@ -297,9 +359,16 @@ fun AppRoot(dao: RecordDao) {
                 }
             )
 
-            // 中间：分类（纯文字，一行 5 个，点一下选中）
+            // 分类上方：最近三条记录（点一下看全部流水）
+            RecentStrip(
+                records = recent3,
+                onClick = { showRecords = true }
+            )
+
+            // 中间：分类（纯文字，一行 5 个，第 5 行可自定义名字）
             QuickBar(
                 currentCatId = entryCatId,
+                customNames = customCats,
                 onQuick = { showTemplates = true },
                 onCategory = { catId, kind ->
                     entryCatId = catId
@@ -309,6 +378,7 @@ fun AppRoot(dao: RecordDao) {
                         CatKind.BOTH -> Unit    // 通用分类保持当前收支
                     }
                 },
+                onEditCustom = { showCatEdit = true },
                 modifier = Modifier.weight(1f)
             )
 
@@ -353,16 +423,28 @@ fun AppRoot(dao: RecordDao) {
                     }
                 }
             )
-
-            // 屏幕最底：最近一笔（点一下看全部流水）
-            LastRecordBar(
-                record = allRecords.maxWithOrNull(compareBy({ it.date }, { it.createdAt })),
-                onClick = { showRecords = true }
-            )
         }
     }
 
-    // 流水弹层（点顶部「流水」打开）
+    // 自定义分类编辑弹窗
+    if (showCatEdit) {
+        CatEditDialog(
+            names = customCats,
+            onSave = { next ->
+                customCats = next
+                CUSTOM_CATS = next
+                CustomCatStore.save(context, next)
+                showCatEdit = false
+                // 当前选中的自定义分类被清空时，回落到默认分类
+                if (entryCatId.startsWith("x") && findCat(entryType, entryCatId).id != entryCatId) {
+                    entryCatId = defaultCatId(entryType)
+                }
+            },
+            onDismiss = { showCatEdit = false }
+        )
+    }
+
+    // 流水弹层（点「最近三条」打开）
     if (showRecords) {
         RecordListSheet(
             month = viewMonth,
@@ -505,17 +587,21 @@ private data class QuickCell(
     val income: Boolean,
     val highlight: Boolean,
     val selected: Boolean,
-    val action: () -> Unit
+    val action: () -> Unit,
+    val longAction: (() -> Unit)? = null
 )
 
 @Composable
 fun QuickBar(
     currentCatId: String,
+    customNames: List<String>,
     onQuick: () -> Unit,
     onCategory: (String, CatKind) -> Unit,
+    onEditCustom: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 每个分类一个按钮：点一下选中，金额键盘输入的账就归到它；末尾是「快捷」模板按钮
+    // 前 4 行：19 个固定分类（点一下选中）+「快捷」模板按钮；
+    // 第 5 行：5 个自定义分类（点一下选中；空位点「＋」改名，已起名长按改名）
     val cells = CATS.map { c ->
         QuickCell(
             label = c.name,
@@ -523,10 +609,24 @@ fun QuickBar(
             highlight = false,
             selected = c.id == currentCatId
         ) { onCategory(c.id, c.kind) }
-    } + QuickCell("快捷", false, true, false, onQuick)
+    } + QuickCell("快捷", false, true, false, onQuick) +
+        customNames.mapIndexed { i, n ->
+            if (n.isBlank()) {
+                QuickCell("＋", false, false, false) { onEditCustom() }
+            } else {
+                QuickCell(
+                    label = n,
+                    income = false,
+                    highlight = false,
+                    selected = customCatId(i) == currentCatId,
+                    action = { onCategory(customCatId(i), CatKind.BOTH) },
+                    longAction = onEditCustom
+                )
+            }
+        }
 
     Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
         modifier = modifier
             .fillMaxWidth()
             .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 2.dp)
@@ -535,8 +635,8 @@ fun QuickBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 row.forEach { cell ->
                     QuickPill(
@@ -545,6 +645,7 @@ fun QuickBar(
                         income = cell.income,
                         selected = cell.selected,
                         onClick = cell.action,
+                        onLongClick = cell.longAction,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                 }
@@ -563,6 +664,7 @@ fun QuickPill(
     income: Boolean = false,
     selected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -580,17 +682,18 @@ fun QuickPill(
                 if (selected) Modifier.border(1.5.dp, BrandBlue, RoundedCornerShape(12.dp))
                 else Modifier
             )
-            .combinedClickable(onClick = onClick),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
-            fontSize = 13.sp,
+            fontSize = if (label == "＋") 18.sp else 13.sp,
             maxLines = 1,
             color = when {
                 highlight -> Color.White
                 selected -> BrandBlue
                 income -> IncomeGreen
+                label == "＋" -> Color(0xFFB3BCC7)
                 else -> InkGray
             },
             fontWeight = if (highlight || income || selected) FontWeight.SemiBold else FontWeight.Normal
@@ -864,6 +967,8 @@ fun HeaderBar(
     date: LocalDate,
     expense: Double,
     income: Double,
+    totalExpense: Double,
+    totalIncome: Double,
     onDateClick: () -> Unit,
     onExport: () -> Unit
 ) {
@@ -910,70 +1015,142 @@ fun HeaderBar(
                 color = IncomeGreen
             )
         }
+        // 第三行：总收入 / 总支出（全部记录累计，字略小）
+        Row(Modifier.padding(start = 4.dp, top = 0.dp)) {
+            Text("总支出 ", fontSize = 11.5.sp, color = InkGray)
+            Text(
+                "¥${fmtMoney(totalExpense)}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFC0565B)
+            )
+            Spacer(Modifier.width(14.dp))
+            Text("总收入 ", fontSize = 11.5.sp, color = InkGray)
+            Text(
+                "¥${fmtMoney(totalIncome)}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF0E8B7D)
+            )
+        }
     }
 }
 
-// ---------- 屏幕最底：最近一笔（点一下看全部流水） ----------
+// ---------- 分类上方：最近三条记录（点一下看全部流水） ----------
 
 @Composable
-fun LastRecordBar(
-    record: Record?,
+fun RecentStrip(
+    records: List<Record>,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, top = 5.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 6.dp)
             .background(Color.White, RoundedCornerShape(12.dp))
             .border(0.5.dp, Color(0xFFE8EBEF), RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 5.dp)
     ) {
-        if (record == null) {
+        if (records.isEmpty()) {
             Text(
-                "还没有记录 · 上面选分类、输金额就能记第一笔",
-                fontSize = 12.sp,
+                "还没有记录 · 选分类、输金额就能记第一笔",
+                fontSize = 11.5.sp,
                 color = InkGray,
                 maxLines = 1
             )
         } else {
-            val d = LocalDate.parse(record.date)
-            val cat = findCat(record.type, record.categoryId)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    cat.name,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF1B1F24),
-                    maxLines = 1
-                )
-                if (record.note.isNotBlank()) {
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        record.note,
-                        fontSize = 12.sp,
-                        color = InkGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
+            Column {
+                records.forEach { r ->
+                    val d = LocalDate.parse(r.date)
+                    val cat = findCat(r.type, r.categoryId)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 1.dp)
+                    ) {
+                        Text(
+                            cat.name,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1B1F24),
+                            maxLines = 1
+                        )
+                        if (r.note.isNotBlank()) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                r.note,
+                                fontSize = 11.sp,
+                                color = InkGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${d.monthValue}月${d.dayOfMonth}日",
+                            fontSize = 10.5.sp,
+                            color = InkGray
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            (if (r.type == RecordType.EXPENSE) "-" else "+") + "¥" + fmtMoney(r.amount),
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (r.type == RecordType.EXPENSE) ExpenseRed else IncomeGreen
+                        )
+                    }
                 }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "${d.monthValue}月${d.dayOfMonth}日",
-                    fontSize = 11.5.sp,
-                    color = InkGray
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    (if (record.type == RecordType.EXPENSE) "-" else "+") + "¥" + fmtMoney(record.amount),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (record.type == RecordType.EXPENSE) ExpenseRed else IncomeGreen
-                )
             }
         }
     }
+}
+
+// ---------- 自定义分类编辑弹窗 ----------
+
+@Composable
+fun CatEditDialog(
+    names: List<String>,
+    onSave: (List<String>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val drafts = remember(names) { mutableStateListOf<String>().apply { addAll(names) } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("自定义分类", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    "最后一行 5 个按钮的名字，最多 2 个字；留空显示「＋」，点「＋」或长按也能改。",
+                    fontSize = 12.sp,
+                    color = InkGray
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (i in 0 until CUSTOM_COUNT) {
+                        OutlinedTextField(
+                            value = drafts.getOrElse(i) { "" },
+                            onValueChange = { v ->
+                                if (v.length <= 2 && i < drafts.size) drafts[i] = v
+                            },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(drafts.toList()) }) { Text("保存") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
 }
 
 // ---------- 流水弹层（月份切换 + 当月流水，可滚动） ----------
