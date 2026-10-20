@@ -366,6 +366,7 @@ fun AppRoot(dao: RecordDao) {
             )
 
             // 中间：分类（纯文字，一行 5 个，第 5 行可自定义名字）
+            // 分类与键盘按 2:3 分剩余空间——分类变矮，键盘长高填补空白
             QuickBar(
                 currentCatId = entryCatId,
                 customNames = customCats,
@@ -379,11 +380,12 @@ fun AppRoot(dao: RecordDao) {
                     }
                 },
                 onEditCustom = { showCatEdit = true },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(2f)
             )
 
-            // 底部：类型/备注 + 金额 + 压缩数字键盘
+            // 底部：类型/备注 + 金额 + 数字键盘（弹性高度）
             EntryCard(
+                modifier = Modifier.weight(3f),
                 type = entryType,
                 catId = entryCatId,
                 amountText = amountText,
@@ -1382,6 +1384,7 @@ fun applyKey(current: String, k: String): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryCard(
+    modifier: Modifier = Modifier,
     type: RecordType,
     catId: String,
     amountText: String,
@@ -1399,9 +1402,9 @@ fun EntryCard(
         color = Color.White,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         shadowElevation = 8.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
-        Column {
+        Column(Modifier.fillMaxHeight()) {
             // 收 / 支 + 备注
             Row(
                 modifier = Modifier
@@ -1477,16 +1480,25 @@ fun EntryCard(
                 }
             }
 
-            // 自带数字键盘（不弹系统输入法）
-            Keypad(onKey = onKey, onSave = onSave, saveEnabled = hasAmount)
+            // 自带数字键盘（不弹系统输入法，高度弹性撑满剩余空间）
+            Keypad(
+                onKey = onKey,
+                onSave = onSave,
+                saveEnabled = hasAmount,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
 
-/** 内置数字键盘：左侧 0-9 / . / 00，右上角退格，右侧长条保存 */
+/** 内置数字键盘：左侧 0-9 / . / 00，右上角退格，右侧长条保存；高度弹性（weight 撑满） */
 @Composable
-fun Keypad(onKey: (String) -> Unit, onSave: () -> Unit, saveEnabled: Boolean) {
-    val keyH = 46.dp
+fun Keypad(
+    onKey: (String) -> Unit,
+    onSave: () -> Unit,
+    saveEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
     val gap = 1.dp
     val digitRows = listOf(
         listOf("1", "2", "3"),
@@ -1496,32 +1508,36 @@ fun Keypad(onKey: (String) -> Unit, onSave: () -> Unit, saveEnabled: Boolean) {
     )
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(Color(0xFFE4E8EE))
     ) {
-        Column(modifier = Modifier.weight(3f)) {
-            digitRows.forEachIndexed { index, r ->
-                Row(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.weight(3f).fillMaxHeight()) {
+            digitRows.forEach { r ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
                     r.forEach { k ->
                         Keybox(
                             label = k,
-                            modifier = Modifier.weight(1f).height(keyH),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                             onClick = { onKey(k) }
                         )
                     }
                 }
-                // 行间隙（最后一行后不加，保证与右侧保存键总高一致）
-                if (index < digitRows.size - 1) Spacer(Modifier.height(gap))
+                // 行间隙（最后一行后不加）
+                if (r != digitRows.last()) Spacer(Modifier.height(gap))
             }
         }
         Spacer(Modifier.width(gap))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
             Keybox(
                 label = "⌫",
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(keyH),
+                    .weight(1f),
                 onClick = { onKey("del") }
             )
             Spacer(Modifier.height(gap))
@@ -1531,7 +1547,7 @@ fun Keypad(onKey: (String) -> Unit, onSave: () -> Unit, saveEnabled: Boolean) {
                 isSave = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(keyH * 3 + gap * 2),
+                    .weight(3f),
                 onClick = onSave
             )
         }

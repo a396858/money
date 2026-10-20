@@ -1,5 +1,5 @@
 /* 记账本 Service Worker —— 让 App 离线可用 */
-var CACHE = 'moneybook-v9';
+var CACHE = 'moneybook-v10';
 var ASSETS = [
   './',
   './index.html',
