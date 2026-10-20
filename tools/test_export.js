@@ -41,7 +41,11 @@ function grabFunc(name) {
 }
 
 const chunks = [
-  slice('var CATS = [', '\n  ];'),
+  slice('var BASE_CATS = [', '\n  ];'),
+  'var CUSTOM_COUNT = 5;',
+  "var CUSTOM_CATS = ['','','','',''];",   // 桩：等同于没起名字的 5 个自定义位
+  grabFunc('customCatId'), grabFunc('buildCats'),
+  'var CATS = buildCats();',
   "var DEFAULT_CAT = 'food';",
   slice('var LEGACY_CAT = {', '};'),
   slice('var state = {', '\n  };'),
@@ -51,13 +55,15 @@ const chunks = [
   grabFunc('crc32'), grabFunc('str2u8'), grabFunc('colRef'), grabFunc('escXml'),
   grabFunc('makeZip'), grabFunc('makeSheetXml'),
   grabFunc('buildCsvText'), grabFunc('monthScope'), grabFunc('monthTag'),
+  grabFunc('yearScope'), grabFunc('yearTag'), grabFunc('recordYears'),
   // 用桩替换真实的下载 / 提示，把产物截获下来
   'var CAPTURED = [];',
   'function downloadBlob(blob, name){ CAPTURED.push({ blob: blob, name: name }); }',
   'function toast(msg){ console.log("    [toast] " + msg); }',
   grabFunc('exportXLSX'), grabFunc('exportCSV'),
   'module.exports = { state: state, exportXLSX: exportXLSX, exportCSV: exportCSV, ' +
-  'buildCsvText: buildCsvText, CAPTURED: CAPTURED, findCat: findCat, CATS: CATS };',
+  'buildCsvText: buildCsvText, recordYears: recordYears, yearScope: yearScope, ' +
+  'CAPTURED: CAPTURED, findCat: findCat, CATS: CATS };',
 ].join('\n');
 
 const modPath = path.join(TMP, 'extracted.js');
@@ -121,9 +127,36 @@ const LEGACY_IDS = ['traffic', 'shopping', 'home', 'fun', 'study', 'bonus', 'red
 
   console.log('\n[3] 分类表自检');
   check(new Set(M.CATS.map(c => c.k)).size === M.CATS.length, '分类 id 无重复');
-  check(M.CATS.length === 19, '分类数量 = 19（实际 ' + M.CATS.length + '）');
+  check(M.CATS.length === 24, '分类数量 = 19 固定 + 5 自定义（实际 ' + M.CATS.length + '）');
   check(M.findCat('expense', 'give') !== null && M.findCat('income', 'give') !== null,
     '「给于」收支两种模式都能取到');
+
+  console.log('\n[4] 按年份导出（跨年选择）');
+  const lastY = now.getFullYear() - 1;
+  state.records.push({ id: 'ly1', type: 'expense', cat: 'food', amount: 12.3, note: '去年的午饭', date: lastY + '-03-05', ts: ts++ });
+  state.records.push({ id: 'ly2', type: 'income', cat: 'salary', amount: 5000, note: '去年工资', date: lastY + '-04-01', ts: ts++ });
+  const years = M.recordYears();
+  check(years.length === 2, '检测到 2 个年份：' + years.map(o => o.y + '年(' + o.n + '条)').join(' / '));
+  check(years[0].y === now.getFullYear() && years[1].y === lastY, '年份倒序排列');
+  check(years[1].n === 2, '旧年份条数统计正确（' + years[1].n + '）');
+  check(M.yearScope(lastY).length === 2, 'yearScope(旧年份) 只取旧年记录');
+  check(M.yearScope().length === 10, 'yearScope() 默认仍取当前浏览年份');
+
+  const b4 = M.CAPTURED.length;
+  M.exportCSV(lastY);
+  check(M.CAPTURED.length === b4 + 1, '选定旧年份后触发 CSV 下载');
+  const csv2 = M.CAPTURED[M.CAPTURED.length - 1];
+  check(csv2.name === '记账本_' + lastY + '年.csv', 'CSV 文件名带所选年份：' + csv2.name);
+  const text2 = Buffer.from(await csv2.blob.arrayBuffer()).toString('utf8');
+  check(text2.includes('去年的午饭') && !text2.includes('月薪'), '导出内容只含所选年份的记录');
+
+  const b5 = M.CAPTURED.length;
+  M.exportXLSX(lastY);
+  check(M.CAPTURED.length === b5 + 1, '选定旧年份后触发 Excel 下载');
+  const xlsx2 = M.CAPTURED[M.CAPTURED.length - 1];
+  check(xlsx2.name === '记账本_' + lastY + '年.xlsx', 'Excel 文件名带所选年份：' + xlsx2.name);
+  const xbuf = Buffer.from(await xlsx2.blob.arrayBuffer());
+  check(xbuf.length > 1000 && xbuf[0] === 0x50, 'Excel 产物正常（' + xbuf.length + ' 字节）');
 
   console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
   console.log('产物目录（可手动用 Excel/WPS 打开核对）：' + TMP);

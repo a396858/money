@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,6 +69,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -259,6 +261,7 @@ fun AppRoot(dao: RecordDao) {
     var viewMonth by remember { mutableStateOf(YearMonth.now()) }
     var pendingDelete by remember { mutableStateOf<Record?>(null) }
     var exportTarget by remember { mutableStateOf<Int?>(null) }
+    var showYearPick by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
     // 记一笔（常驻首页顶部，打开即可输入）
@@ -335,6 +338,13 @@ fun AppRoot(dao: RecordDao) {
         .sortedWith(compareByDescending<Record> { it.date }.thenByDescending { it.createdAt })
         .take(3)
 
+    // 有记录的年份（倒序）+ 该年条数，导出时选
+    val exportYears = allRecords
+        .groupingBy { LocalDate.parse(it.date).year }
+        .eachCount()
+        .toList()
+        .sortedByDescending { it.first }
+
     Scaffold(containerColor = PageBg) { padding ->
         Column(
             modifier = Modifier
@@ -350,11 +360,10 @@ fun AppRoot(dao: RecordDao) {
                 totalIncome = totalIncome,
                 onDateClick = { showDatePicker = true },
                 onExport = {
-                    if (yearRecords(allRecords, viewMonth.year).isEmpty()) {
-                        toast("今年没有记录可导出")
+                    if (allRecords.isEmpty()) {
+                        toast("还没有记录可导出")
                     } else {
-                        exportTarget = viewMonth.year
-                        exportLauncher.launch("记账本_${viewMonth.year}年.csv")
+                        showYearPick = true
                     }
                 }
             )
@@ -426,6 +435,20 @@ fun AppRoot(dao: RecordDao) {
                 }
             )
         }
+    }
+
+    // 选择导出年份
+    if (showYearPick) {
+        YearPickDialog(
+            years = exportYears,
+            currentYear = viewMonth.year,
+            onPick = { y ->
+                showYearPick = false
+                exportTarget = y
+                exportLauncher.launch("记账本_${y}年.csv")
+            },
+            onDismiss = { showYearPick = false }
+        )
     }
 
     // 自定义分类编辑弹窗
@@ -1107,6 +1130,64 @@ fun RecentStrip(
             }
         }
     }
+}
+
+// ---------- 选择导出年份 ----------
+
+@Composable
+fun YearPickDialog(
+    years: List<Pair<Int, Int>>,
+    currentYear: Int,
+    onPick: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选年份导出", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    "有记录的年份都在这里，点一年导出该年全部流水（CSV）。",
+                    fontSize = 12.sp,
+                    color = InkGray
+                )
+                Spacer(Modifier.height(10.dp))
+                years.forEach { (y, n) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onPick(y) }
+                            .padding(horizontal = 10.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("${y}年", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        if (y == currentYear) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "当前",
+                                fontSize = 10.sp,
+                                color = BrandBlue,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFEEF4FF))
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Text("$n 条", fontSize = 12.sp, color = InkGray)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
 }
 
 // ---------- 自定义分类编辑弹窗 ----------

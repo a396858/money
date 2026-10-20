@@ -209,6 +209,30 @@
     width:100%;text-align:center;padding:9px 0;font-size:14px;font-weight:600;
   }
 
+  /* ============ 导出年份选择 ============ */
+  .year-edit{padding:14px 16px calc(18px + var(--safe-b));}
+  .year-edit h3{margin:0 0 4px;font-size:15px;}
+  .year-edit p{margin:0 0 12px;font-size:12px;color:var(--text-3);line-height:1.5;}
+  .year-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+    margin-bottom:14px;max-height:46vh;overflow-y:auto;
+  }
+  .year-grid .ybtn{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    padding:13px 4px;border-radius:13px;background:#f4f6f8;color:var(--text);
+  }
+  .year-grid .ybtn:active{background:#e8ebef;}
+  .year-grid .ybtn b{font-size:16px;font-weight:700;letter-spacing:.2px;}
+  .year-grid .ybtn span{font-size:11.5px;color:var(--text-3);}
+  .year-grid .ybtn.cur{background:#eef4ff;color:var(--brand);}
+  .year-grid .ybtn.cur span{color:var(--brand);opacity:.72;}
+  .year-edit .acts{display:flex;gap:9px;}
+  .year-edit .acts button{
+    flex:1;padding:12px;border-radius:12px;font-size:14px;font-weight:600;
+    background:#f1f3f6;color:var(--text-2);
+  }
+  .year-edit .acts button:active{background:#e6e9ee;}
+
   /* 流水弹层内的月份导航 */
   .month-nav{
     display:flex;align-items:center;justify-content:center;gap:2px;
@@ -500,6 +524,19 @@
   <div class="groups" id="groups"></div>
 </div>
 
+<!-- 选择导出年份 -->
+<div class="sheet" id="yearSheet">
+  <div class="sheet-grip"></div>
+  <div class="year-edit">
+    <h3 id="yearTitle">选择年份导出</h3>
+    <p>有记录的年份都会列出来，点一年导出该年全部流水。</p>
+    <div class="year-grid" id="yearList"></div>
+    <div class="acts">
+      <button class="del" id="yearCancel">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- 更多菜单 -->
 <div class="sheet" id="menuSheet">
   <div class="sheet-grip"></div>
@@ -507,8 +544,8 @@
     <button class="mi" data-m="list"><span class="mi-ico">📋</span><span>查看全部流水<span class="mi-sub">按月翻看、改月份</span></span></button>
     <button class="mi" data-m="cats"><span class="mi-ico">🏷️</span><span>编辑自定义分类<span class="mi-sub">最后一行 5 个按钮的名字（2 个字）</span></span></button>
     <div class="sep"></div>
-    <button class="mi" data-m="xlsx"><span class="mi-ico">📊</span><span>导出今年 Excel 表格<span class="mi-sub">生成 .xlsx 文件，WPS / Excel 直接打开</span></span></button>
-    <button class="mi" data-m="csv"><span class="mi-ico">📄</span><span>导出今年 CSV<span class="mi-sub">通用表格格式</span></span></button>
+    <button class="mi" data-m="xlsx"><span class="mi-ico">📊</span><span>导出 Excel 表格<span class="mi-sub">可选年份，生成 .xlsx，WPS / Excel 直接打开</span></span></button>
+    <button class="mi" data-m="csv"><span class="mi-ico">📄</span><span>导出 CSV 表格<span class="mi-sub">可选年份，通用表格格式</span></span></button>
     <div class="sep"></div>
     <button class="mi" data-m="backup"><span class="mi-ico">💾</span><span>下载完整备份 (JSON)</span></button>
     <button class="mi" data-m="restore"><span class="mi-ico">📥</span><span>从备份恢复</span></button>
@@ -1105,7 +1142,7 @@
     if(!document.querySelector('.sheet.on')) document.getElementById('mask').classList.remove('on');
   }
   function closeAll(){
-    ['listSheet','menuSheet','tmplSheet','tplEditSheet','detailSheet','catEditSheet'].forEach(closeSheet);
+    ['listSheet','menuSheet','tmplSheet','tplEditSheet','detailSheet','catEditSheet','yearSheet'].forEach(closeSheet);
   }
 
   /* ---------- Toast ---------- */
@@ -1129,14 +1166,45 @@
   function monthTag(){
     return state.viewMonth.getFullYear() + pad(state.viewMonth.getMonth()+1);
   }
-  function yearScope(){
-    var y = state.viewMonth.getFullYear();
+  function yearScope(year){
+    var y = year || state.viewMonth.getFullYear();
     return state.records.filter(function(r){
       return parseInt(r.date.split('-')[0],10) === y;
     }).sort(function(a,b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : a.ts-b.ts); });
   }
-  function yearTag(){
-    return state.viewMonth.getFullYear() + '年';
+  function yearTag(year){
+    return (year || state.viewMonth.getFullYear()) + '年';
+  }
+
+  /* 有记录的年份（倒序），带条数 */
+  function recordYears(){
+    var map = {};
+    state.records.forEach(function(r){
+      var y = parseInt(r.date.split('-')[0], 10);
+      if(!y) return;
+      map[y] = (map[y] || 0) + 1;
+    });
+    return Object.keys(map).map(function(k){
+      return { y: parseInt(k, 10), n: map[k] };
+    }).sort(function(a,b){ return b.y - a.y; });
+  }
+
+  var exportFmt = 'xlsx';
+  function openYearPick(fmt){
+    exportFmt = fmt;
+    var years = recordYears();
+    if(!years.length){ toast('还没有任何记录'); return; }
+    document.getElementById('yearTitle').textContent =
+      (fmt === 'csv' ? '导出 CSV' : '导出 Excel') + ' · 选年份';
+    var nowY = new Date().getFullYear(), curY = state.viewMonth.getFullYear();
+    var html = '';
+    years.forEach(function(o){
+      var cls = 'ybtn' + (o.y === curY ? ' cur' : '');
+      html += '<button class="' + cls + '" data-y="' + o.y + '">' +
+        '<b>' + o.y + '年</b><span>' + (o.y === nowY ? '今年 · ' : '') + o.n + ' 条</span></button>';
+    });
+    document.getElementById('yearList').innerHTML = html;
+    openSheet('yearSheet');
   }
   function downloadBlob(blob, name){
     var url = URL.createObjectURL(blob);
@@ -1169,12 +1237,12 @@
     return lines.join('\r\n');
   }
 
-  function exportCSV(){
-    var scope = yearScope();
-    if(!scope.length){ toast('今年没有记录'); return; }
+  function exportCSV(year){
+    var scope = yearScope(year);
+    if(!scope.length){ toast(yearTag(year) + '没有记录'); return; }
     var csv = '\ufeff' + buildCsvText(scope);
-    downloadBlob(new Blob([csv], {type:'text/csv;charset=utf-8'}), '记账本_' + yearTag() + '.csv');
-    toast('已导出 ' + yearTag() + ' 共 ' + scope.length + ' 条记录');
+    downloadBlob(new Blob([csv], {type:'text/csv;charset=utf-8'}), '记账本_' + yearTag(year) + '.csv');
+    toast('已导出 ' + yearTag(year) + ' 共 ' + scope.length + ' 条记录');
   }
 
   /* ---- 纯 JS 生成 xlsx（zip stored，无外部依赖） ---- */
@@ -1253,9 +1321,9 @@
         }).join('') + '</row>';
       }).join('') + '</sheetData></worksheet>';
   }
-  function exportXLSX(){
-    var scope = yearScope();
-    if(!scope.length){ toast('今年没有记录'); return; }
+  function exportXLSX(year){
+    var scope = yearScope(year);
+    if(!scope.length){ toast(yearTag(year) + '没有记录'); return; }
     var rows = [['日期','星期','类型','分类','备注','金额']];
     var exp=0, inc=0;
     scope.forEach(function(r){
@@ -1294,8 +1362,8 @@
       {name:'xl/_rels/workbook.xml.rels', data:str2u8(WBRELS)},
       {name:'xl/worksheets/sheet1.xml', data:str2u8(makeSheetXml(rows))}
     ]);
-    downloadBlob(blob, '记账本_' + yearTag() + '.xlsx');
-    toast('已导出 ' + yearTag() + ' Excel（' + scope.length + ' 条）');
+    downloadBlob(blob, '记账本_' + yearTag(year) + '.xlsx');
+    toast('已导出 ' + yearTag(year) + ' Excel（' + scope.length + ' 条）');
   }
 
   /* ---------- 备份 / 恢复 / 清空 ---------- */
@@ -1380,6 +1448,20 @@
       var fs = document.querySelectorAll('#customInputs .fld');
       for(var i=0;i<fs.length;i++) fs[i].value = '';
     });
+    // 导出年份选择
+    document.getElementById('yearList').addEventListener('click', function(e){
+      var b = e.target.closest('.ybtn');
+      if(!b) return;
+      var y = parseInt(b.dataset.y, 10);
+      closeSheet('yearSheet');
+      setTimeout(function(){
+        if(exportFmt === 'csv') exportCSV(y); else exportXLSX(y);
+      }, 180);
+    });
+    document.getElementById('yearCancel').addEventListener('click', function(){
+      closeSheet('yearSheet');
+    });
+
     document.getElementById('mask').addEventListener('click', closeAll);
     document.getElementById('saveBtn').addEventListener('click', commit);
     document.getElementById('closeDetail').addEventListener('click', function(){ closeSheet('detailSheet'); });
@@ -1446,8 +1528,8 @@
       setTimeout(function(){
         if(m === 'list'){ render(); openSheet('listSheet'); }
         else if(m === 'cats') openCatEdit();
-        else if(m === 'xlsx') exportXLSX();
-        else if(m === 'csv') exportCSV();
+        else if(m === 'xlsx') openYearPick('xlsx');
+        else if(m === 'csv') openYearPick('csv');
         else if(m === 'backup') backupJSON();
         else if(m === 'restore') restoreJSON();
         else if(m === 'clear') clearAll();
