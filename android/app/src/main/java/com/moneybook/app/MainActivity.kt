@@ -262,6 +262,7 @@ fun AppRoot(dao: RecordDao) {
     var pendingDelete by remember { mutableStateOf<Record?>(null) }
     var exportTarget by remember { mutableStateOf<Int?>(null) }
     var showYearPick by remember { mutableStateOf(false) }
+    var exportFmt by remember { mutableStateOf("xlsx") }   // xlsx / csv
     var expanded by remember { mutableStateOf(false) }
 
     // 记一笔（常驻首页顶部，打开即可输入）
@@ -308,8 +309,8 @@ fun AppRoot(dao: RecordDao) {
         }
     }
 
-    // 导出 CSV（按年）：调用系统保存对话框（SAF，无需存储权限）
-    val exportLauncher = rememberLauncherForActivityResult(
+    // 导出（按年 + 选格式）：调用系统保存对话框（SAF，无需存储权限）
+    val exportCsvLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         val year = exportTarget
@@ -317,7 +318,21 @@ fun AppRoot(dao: RecordDao) {
             scope.launch {
                 val rows = yearRecords(allRecords, year)
                 val ok = writeCsv(context, uri, rows)
-                toast(if (ok) "已导出 ${year}年 共 ${rows.size} 条记录" else "导出失败")
+                toast(if (ok) "已导出 ${year}年 CSV 共 ${rows.size} 条" else "导出失败")
+            }
+        }
+    }
+    val exportXlsxLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    ) { uri ->
+        val year = exportTarget
+        if (uri != null && year != null) {
+            scope.launch {
+                val rows = yearRecords(allRecords, year)
+                val ok = writeXlsx(context, uri, rows)
+                toast(if (ok) "已导出 ${year}年 Excel 共 ${rows.size} 条" else "导出失败")
             }
         }
     }
@@ -442,10 +457,13 @@ fun AppRoot(dao: RecordDao) {
         YearPickDialog(
             years = exportYears,
             currentYear = viewMonth.year,
+            fmt = exportFmt,
+            onFmtChange = { exportFmt = it },
             onPick = { y ->
                 showYearPick = false
                 exportTarget = y
-                exportLauncher.launch("记账本_${y}年.csv")
+                if (exportFmt == "csv") exportCsvLauncher.launch("记账本_${y}年.csv")
+                else exportXlsxLauncher.launch("记账本_${y}年.xlsx")
             },
             onDismiss = { showYearPick = false }
         )
@@ -1138,6 +1156,8 @@ fun RecentStrip(
 fun YearPickDialog(
     years: List<Pair<Int, Int>>,
     currentYear: Int,
+    fmt: String,
+    onFmtChange: (String) -> Unit,
     onPick: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1147,11 +1167,25 @@ fun YearPickDialog(
         text = {
             Column(
                 Modifier
-                    .heightIn(max = 320.dp)
+                    .heightIn(max = 360.dp)
                     .verticalScroll(rememberScrollState())
             ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = fmt == "xlsx",
+                        onClick = { onFmtChange("xlsx") },
+                        label = { Text("Excel .xlsx", fontSize = 12.sp) }
+                    )
+                    FilterChip(
+                        selected = fmt == "csv",
+                        onClick = { onFmtChange("csv") },
+                        label = { Text("CSV", fontSize = 12.sp) }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    "有记录的年份都在这里，点一年导出该年全部流水（CSV）。",
+                    if (fmt == "csv") "点一年，导出该年全部流水为 CSV。"
+                    else "点一年，导出该年全部流水为 Excel（.xlsx，可用 WPS 直接打开）。",
                     fontSize = 12.sp,
                     color = InkGray
                 )
@@ -1700,10 +1734,57 @@ suspend fun writeCsv(
         val totalIncome = rows.filter { it.type == RecordType.INCOME }.sumOf { it.amount }
         sb.append("\r\n")
         sb.append("合计,,,,收入,${String.format("%.2f", totalIncome)}\r\n")
+        sb.append("合计,,,,支出,${String.format("%.2f", totalExpense)}\r\n")
         sb.append("结余,,,,,${String.format("%.2f", totalIncome - totalExpense)}\r\n")
 
         context.contentResolver.openOutputStream(uri)?.use { os ->
             os.write(sb.toString().toByteArray(Charsets.UTF_8))
+        } ?: return@withContext false
+        true
+    } catch (e: IOException) {
+        false
+    } catch (e: SecurityException) {
+        false
+    }
+}
+
+// ---------- Excel(.xlsx) 导出 ----------
+
+fun round2(v: Double): Double = Math.round(v * 100) / 100.0
+
+suspend fun writeXlsx(
+    context: Context,
+    uri: Uri,
+    rows: List<Record>
+): Boolean = withContext(Dispatchers.IO) {
+    try {
+        if (rows.isEmpty()) return@withContext false
+        val sorted = rows.sortedWith(compareBy({ it.date }, { it.createdAt }))
+
+        val data = mutableListOf<List<Any?>>()
+        data.add(listOf<Any?>("日期", "星期", "类型", "分类", "备注", "金额"))
+        sorted.forEach { r ->
+            val cat = findCat(r.type, r.categoryId)
+            data.add(
+                listOf<Any?>(
+                    r.date,
+                    weekdayCn(LocalDate.parse(r.date)),
+                    if (r.type == RecordType.EXPENSE) "支出" else "收入",
+                    cat.name,
+                    r.note,
+                    if (r.type == RecordType.EXPENSE) -r.amount else r.amount
+                )
+            )
+        }
+        val totalExpense = rows.filter { it.type == RecordType.EXPENSE }.sumOf { it.amount }
+        val totalIncome = rows.filter { it.type == RecordType.INCOME }.sumOf { it.amount }
+        data.add(listOf<Any?>())
+        data.add(listOf<Any?>("合计", "", "", "", "收入", round2(totalIncome)))
+        data.add(listOf<Any?>("合计", "", "", "", "支出", round2(totalExpense)))
+        data.add(listOf<Any?>("结余", "", "", "", "", round2(totalIncome - totalExpense)))
+
+        context.contentResolver.openOutputStream(uri)?.use { os ->
+            XlsxWriter.write(os, data)
         } ?: return@withContext false
         true
     } catch (e: IOException) {

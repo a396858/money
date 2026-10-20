@@ -7,7 +7,7 @@
 | 技术 | HTML + JS（PWA） | Kotlin + Jetpack Compose + Room |
 | 安装 | 浏览器打开即用，可加到主屏幕 | 需用 Android Studio 编译安装 |
 | 数据存放 | 手机浏览器本地 (localStorage) | 手机应用数据库 (Room/SQLite) |
-| 导出 | 按年份导出 Excel (.xlsx) / CSV / JSON 备份 | 按年份导出 CSV |
+| 导出 | 按年份导出 Excel (.xlsx) / CSV / JSON 备份 | 按年份导出 Excel (.xlsx) / CSV |
 
 功能：
 - **打开即记账**：首页顶部就是记账区（金额 + 自带数字键盘），打开 App 直接输金额就行，没有单独的「记一笔」按钮
@@ -148,11 +148,10 @@ android/
 - 数字键盘是 App 自绘的（0-9 / . / 00 / ⌫ / 保存长条键），不弹系统输入法；
 - 分类网格 19 个按钮 + ⚡模板，点一下选中分类，键盘输入的账归到它；
 - **长按**流水可删除；流水默认 10 条，点「展开其余 N 条」看全部；
-- 右上角分享图标：先弹窗选年份（列出有记录的年份 + 条数），再把该年流水导出为 CSV（WPS / Excel 可直接打开）。
+- 右上角分享图标：先选格式（Excel .xlsx / CSV）和年份（列出有记录的年份 + 条数），再导出该年全部流水；xlsx 用 WPS / Excel 直接打开，金额是数字型可 SUM。
 
-> 原生版导出的是 CSV，不是网页版那种 `.xlsx`。要 xlsx 需要在工程里加
-> Apache POI（体积 +10MB 左右），或者自己写一个纯 `java.util.zip` 的
-> OOXML 写入器（网页版就是这么做的，两端可对齐）。
+> 原生版的 xlsx 由 `XlsxWriter.kt` 生成——纯 `java.util.zip` 手写 OOXML，
+> 不引 Apache POI，APK 体积不变（网页版也是同一套思路）。
 
 ### 工程自检记录
 本机没有 JDK / Android SDK，无法编译验证，因此对源码做了静态审计，已确认：
